@@ -20,3 +20,33 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: pytest tests/unit
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: rtbs
+          POSTGRES_PASSWORD: change_me
+          POSTGRES_DB: rtbs
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U rtbs" --health-interval 5s
+          --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+asyncpg://rtbs:change_me@localhost:5432/rtbs
+      TEST_DATABASE_URL: postgresql://rtbs:change_me@localhost:5432/rtbs
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt
+      - run: alembic upgrade head
+      - run: alembic downgrade base && alembic upgrade head
+      - run: pytest tests/integration
