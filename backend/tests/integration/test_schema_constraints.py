@@ -16,7 +16,7 @@ from asyncpg import exceptions as pgx
 DSN = os.environ.get(
     "TEST_DATABASE_URL", "postgresql://rtbs:change_me@localhost:5432/rtbs"
 )
-T0 = dt.datetime(2030, 1, 1, 10, 0, tzinfo=dt.timezone.utc)
+T0 = dt.datetime(2030, 1, 1, 10, 0, tzinfo=dt.UTC)
 
 BOOK = (
     "INSERT INTO bookings (user_id, resource_id, start_time, end_time, quantity, status,"
