@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+node_modules/
+.expo/
+dist/
+bench/results/*
+!bench/results/.gitkeep
+*.log
