@@ -11,3 +11,4 @@ dist/
 bench/results/*
 !bench/results/.gitkeep
 *.log
+mobile/src/api/generated/
