@@ -1,0 +1,859 @@
+openapi: 3.0.3
+info:
+  title: RealTime Booking System API
+  version: 1.0.0
+  description: |
+    Server base path is /v1. Health probes (/healthz, /readyz) and /metrics are outside this contract.
+    Timestamps are ISO-8601 UTC. POST /bookings and POST /waitlists require an Idempotency-Key header.
+servers:
+  - url: http://localhost:8080/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: auth
+  - name: resources
+  - name: bookings
+  - name: waitlists
+  - name: notifications
+  - name: admin
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Tokens
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "200":
+          description: Rotated tokens
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /users/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /resources:
+    get:
+      tags: [resources]
+      operationId: listResources
+      parameters:
+        - {
+            name: type,
+            in: query,
+            schema: { $ref: "#/components/schemas/ResourceType" },
+          }
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - {
+            name: available_from,
+            in: query,
+            schema: { type: string, format: date-time },
+          }
+        - {
+            name: available_to,
+            in: query,
+            schema: { type: string, format: date-time },
+          }
+        - {
+            name: eligible_only,
+            in: query,
+            schema: { type: boolean, default: true },
+          }
+        - {
+            name: lat,
+            in: query,
+            schema: { type: number, minimum: -90, maximum: 90 },
+          }
+        - {
+            name: lon,
+            in: query,
+            schema: { type: number, minimum: -180, maximum: 180 },
+          }
+        - {
+            name: radius_m,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 50000 },
+          }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: Page of resources
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ResourcePage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /resources/{resource_id}:
+    get:
+      tags: [resources]
+      operationId: getResource
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      responses:
+        "200":
+          description: Resource
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resource" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /resources/{resource_id}/availability:
+    get:
+      tags: [resources]
+      operationId: getAvailability
+      description: Either `date` (resource-local day) or `from`+`to`. May be served from cache; see `as_of`.
+      parameters:
+        - { $ref: "#/components/parameters/ResourceId" }
+        - { name: date, in: query, schema: { type: string, format: date } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Slot availability
+          headers:
+            X-Cache: { schema: { type: string, enum: [HIT, MISS, BYPASS] } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Availability" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /bookings:
+    post:
+      tags: [bookings]
+      operationId: createBooking
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingCreate" }
+      responses:
+        "201":
+          description: Confirmed
+          headers:
+            Location: { schema: { type: string } }
+            Idempotent-Replay: { schema: { type: boolean } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "202":
+          description: Waitlisted (`waitlist_if_full` was true and capacity was unavailable)
+          headers:
+            Idempotent-Replay: { schema: { type: boolean } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/Busy" }
+  /bookings/{booking_id}:
+    get:
+      tags: [bookings]
+      operationId: getBooking
+      parameters: [{ $ref: "#/components/parameters/BookingId" }]
+      responses:
+        "200":
+          description: Booking with history
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /bookings/{booking_id}/cancel:
+    post:
+      tags: [bookings]
+      operationId: cancelBooking
+      description: Idempotent. Cancelling an already-terminal booking returns it unchanged.
+      parameters: [{ $ref: "#/components/parameters/BookingId" }]
+      responses:
+        "200":
+          description: Booking after cancellation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /users/me/bookings:
+    get:
+      tags: [bookings]
+      operationId: listMyBookings
+      parameters:
+        - {
+            name: status,
+            in: query,
+            schema: { $ref: "#/components/schemas/BookingStatus" },
+          }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: Page of the caller's bookings, newest first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingPage" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /waitlists:
+    post:
+      tags: [waitlists]
+      operationId: joinWaitlist
+      description: Alias for POST /bookings with waitlist_if_full forced to true.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingCreate" }
+      responses:
+        "201":
+          description: Capacity was available; booking confirmed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "202":
+          description: Waitlisted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /waitlists/{waitlist_id}:
+    get:
+      tags: [waitlists]
+      operationId: getWaitlistEntry
+      parameters:
+        - {
+            name: waitlist_id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      responses:
+        "200":
+          description: Entry with estimated position
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WaitlistEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/me/notifications:
+    get:
+      tags: [notifications]
+      operationId: listNotifications
+      description: Poll with `since` set to the highest id already seen. Results ascend by id.
+      parameters:
+        - {
+            name: since,
+            in: query,
+            schema: { type: integer, format: int64, default: 0 },
+          }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Notifications newer than `since`
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationList" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /users/me/notifications/{notification_id}/read:
+    post:
+      tags: [notifications]
+      operationId: markNotificationRead
+      parameters:
+        - {
+            name: notification_id,
+            in: path,
+            required: true,
+            schema: { type: integer, format: int64 },
+          }
+      responses:
+        "204": { description: Marked read }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /admin/resources:
+    post:
+      tags: [admin]
+      operationId: adminCreateResource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResourceCreate" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resource" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /admin/resources/{resource_id}:
+    patch:
+      tags: [admin]
+      operationId: adminUpdateResource
+      description: A capacity decrease below the maximum slot usage already booked is rejected with 409.
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResourceUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resource" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+  /admin/resources/{resource_id}/deactivate:
+    post:
+      tags: [admin]
+      operationId: adminDeactivateResource
+      parameters: [{ $ref: "#/components/parameters/ResourceId" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  {
+                    type: boolean,
+                    default: false,
+                    description: Cancel future bookings with a reason,
+                  }
+      responses:
+        "200":
+          description: Deactivated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Resource" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /admin/waitlists:
+    get:
+      tags: [admin]
+      operationId: adminListWaitlists
+      parameters:
+        - {
+            name: resource_id,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: Active waitlist entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/WaitlistEntry" }
+                  next_cursor: { type: string, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/allocations:
+    get:
+      tags: [admin]
+      operationId: adminListAllocations
+      parameters:
+        - {
+            name: resource_id,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { $ref: "#/components/parameters/Limit" }
+        - { $ref: "#/components/parameters/Cursor" }
+      responses:
+        "200":
+          description: Allocation records with decision inputs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AllocationRecord" }
+                  next_cursor: { type: string, nullable: true }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/metrics/summary:
+    get:
+      tags: [admin]
+      operationId: adminMetricsSummary
+      parameters:
+        - {
+            name: resource_id,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - {
+            name: window_days,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 90, default: 14 },
+          }
+      responses:
+        "200":
+          description: Aggregate outcomes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MetricsSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated UUID, reused unchanged when retrying the same attempt.
+      schema: { type: string, minLength: 8, maxLength: 128 }
+    ResourceId:
+      {
+        name: resource_id,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    BookingId:
+      {
+        name: booking_id,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    Limit:
+      {
+        name: limit,
+        in: query,
+        schema: { type: integer, minimum: 1, maximum: 100, default: 20 },
+      }
+    Cursor: { name: cursor, in: query, schema: { type: string } }
+
+  responses:
+    BadRequest: &err
+      description: Malformed request (for example missing Idempotency-Key)
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Unauthorized:
+      description: Missing, invalid, or expired credentials
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Forbidden:
+      description: Authenticated but not allowed (role or eligibility)
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: Missing, or not visible to the caller
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Conflict:
+      description: State or capacity conflict
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Unprocessable:
+      description: Validation failure
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    RateLimited:
+      description: Too many requests
+      headers: { Retry-After: { schema: { type: integer } } }
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Busy:
+      description: Temporarily overloaded; retry with the same Idempotency-Key
+      headers: { Retry-After: { schema: { type: integer } } }
+      content:
+        { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              enum:
+                - MALFORMED_REQUEST
+                - UNAUTHENTICATED
+                - INVALID_CREDENTIALS
+                - FORBIDDEN
+                - NOT_ELIGIBLE
+                - NOT_FOUND
+                - EMAIL_TAKEN
+                - CAPACITY_UNAVAILABLE
+                - USER_LIMIT_REACHED
+                - RESOURCE_INACTIVE
+                - ILLEGAL_TRANSITION
+                - CANCELLATION_WINDOW_CLOSED
+                - INVALID_INTERVAL
+                - OUT_OF_HOURS
+                - OUT_OF_HORIZON
+                - QUANTITY_OUT_OF_RANGE
+                - IDEMPOTENCY_KEY_REUSED
+                - VALIDATION_ERROR
+                - RATE_LIMITED
+                - SERVICE_BUSY
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+            request_id: { type: string }
+
+    RegisterRequest:
+      type: object
+      required: [email, name, password]
+      properties:
+        email: { type: string, format: email }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+    TokenPair:
+      type: object
+      required: [access_token, refresh_token, token_type, expires_in]
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string, enum: [bearer] }
+        expires_in:
+          { type: integer, description: Access token lifetime in seconds }
+    User:
+      type: object
+      required: [user_id, email, name, role, user_group]
+      properties:
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { type: string, enum: [student, admin] }
+        user_group: { type: string }
+
+    ResourceType: { type: string, enum: [SEAT, ROOM, COMPUTE_POOL] }
+    BookingStatus:
+      type: string
+      enum: [REQUESTED, CONFIRMED, WAITLISTED, CANCELLED, COMPLETED, EXPIRED]
+    Policy: { type: string, enum: [FIFO, FAIR_SHARE] }
+
+    Resource:
+      type: object
+      required:
+        [
+          resource_id,
+          type,
+          name,
+          capacity,
+          slot_minutes,
+          open_time,
+          close_time,
+          timezone,
+          max_slots_per_booking,
+          max_quantity_per_booking,
+          policy_name,
+          active,
+        ]
+      properties:
+        resource_id: { type: string, format: uuid }
+        type: { $ref: "#/components/schemas/ResourceType" }
+        name: { type: string }
+        capacity: { type: integer, minimum: 1 }
+        slot_minutes: { type: integer, enum: [15, 30, 60, 120] }
+        open_time: { type: string, example: "08:00" }
+        close_time: { type: string, example: "22:00" }
+        timezone: { type: string, example: UTC }
+        max_slots_per_booking: { type: integer }
+        max_quantity_per_booking: { type: integer }
+        policy_name: { $ref: "#/components/schemas/Policy" }
+        lat: { type: number, nullable: true }
+        lon: { type: number, nullable: true }
+        distance_m:
+          {
+            type: number,
+            nullable: true,
+            description: Present only for radius searches,
+          }
+        eligible_groups:
+          {
+            type: array,
+            items: { type: string },
+            description: Empty means open to all,
+          }
+        active: { type: boolean }
+    ResourceCreate:
+      type: object
+      required:
+        [name, type, capacity, slot_minutes, open_time, close_time, timezone]
+      properties:
+        name: { type: string }
+        type: { $ref: "#/components/schemas/ResourceType" }
+        capacity: { type: integer, minimum: 1 }
+        slot_minutes: { type: integer, enum: [15, 30, 60, 120] }
+        open_time: { type: string }
+        close_time: { type: string }
+        timezone: { type: string }
+        max_slots_per_booking: { type: integer, minimum: 1, default: 4 }
+        max_quantity_per_booking: { type: integer, minimum: 1, default: 1 }
+        policy_name: { $ref: "#/components/schemas/Policy" }
+        lat: { type: number }
+        lon: { type: number }
+        eligible_groups: { type: array, items: { type: string } }
+    ResourceUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        capacity: { type: integer, minimum: 1 }
+        open_time: { type: string }
+        close_time: { type: string }
+        max_slots_per_booking: { type: integer, minimum: 1 }
+        max_quantity_per_booking: { type: integer, minimum: 1 }
+        policy_name: { $ref: "#/components/schemas/Policy" }
+        lat: { type: number }
+        lon: { type: number }
+        eligible_groups: { type: array, items: { type: string } }
+    ResourcePage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Resource" } }
+        next_cursor: { type: string, nullable: true }
+
+    Availability:
+      type: object
+      required: [resource_id, as_of, slot_minutes, slots]
+      properties:
+        resource_id: { type: string, format: uuid }
+        as_of:
+          {
+            type: string,
+            format: date-time,
+            description: When this data was read from the database,
+          }
+        slot_minutes: { type: integer }
+        slots:
+          type: array
+          items:
+            type: object
+            required: [start_time, available, capacity]
+            properties:
+              start_time: { type: string, format: date-time }
+              available: { type: integer, minimum: 0 }
+              capacity: { type: integer, minimum: 1 }
+
+    BookingCreate:
+      type: object
+      required: [resource_id, start_time, end_time]
+      properties:
+        resource_id: { type: string, format: uuid }
+        start_time: { type: string, format: date-time }
+        end_time: { type: string, format: date-time }
+        quantity: { type: integer, minimum: 1, default: 1 }
+        waitlist_if_full: { type: boolean, default: false }
+    Booking:
+      type: object
+      required:
+        [
+          booking_id,
+          status,
+          resource_id,
+          start_time,
+          end_time,
+          quantity,
+          created_at,
+        ]
+      properties:
+        booking_id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/BookingStatus" }
+        resource_id: { type: string, format: uuid }
+        start_time: { type: string, format: date-time }
+        end_time: { type: string, format: date-time }
+        quantity: { type: integer }
+        waitlist_position: { type: integer, nullable: true }
+        waitlist_id: { type: string, format: uuid, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        history:
+          type: array
+          description: Included by GET /bookings/{id} only
+          items:
+            type: object
+            required: [to_status, created_at]
+            properties:
+              from_status: { $ref: "#/components/schemas/BookingStatus" }
+              to_status: { $ref: "#/components/schemas/BookingStatus" }
+              reason: { type: string, nullable: true }
+              created_at: { type: string, format: date-time }
+    BookingPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Booking" } }
+        next_cursor: { type: string, nullable: true }
+
+    WaitlistEntry:
+      type: object
+      required:
+        [waitlist_id, booking_id, resource_id, status, start_time, end_time]
+      properties:
+        waitlist_id: { type: string, format: uuid }
+        booking_id: { type: string, format: uuid }
+        resource_id: { type: string, format: uuid }
+        status: { type: string, enum: [ACTIVE, PROMOTED, CANCELLED, EXPIRED] }
+        position: { type: integer, nullable: true }
+        position_is_estimate:
+          {
+            type: boolean,
+            description: "True under FAIR_SHARE, where rank can change.",
+          }
+        start_time: { type: string, format: date-time }
+        end_time: { type: string, format: date-time }
+
+    Notification:
+      type: object
+      required: [id, type, payload, created_at]
+      properties:
+        id: { type: integer, format: int64 }
+        type: { type: string, description: Event type such as BookingPromoted }
+        payload: { type: object, additionalProperties: true }
+        read_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+    NotificationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          { type: array, items: { $ref: "#/components/schemas/Notification" } }
+
+    AllocationRecord:
+      type: object
+      required:
+        [
+          id,
+          booking_id,
+          policy_name,
+          policy_version,
+          decision_type,
+          inputs,
+          decided_at,
+        ]
+      properties:
+        id: { type: integer, format: int64 }
+        booking_id: { type: string, format: uuid }
+        policy_name: { type: string }
+        policy_version: { type: string }
+        decision_type:
+          { type: string, enum: [ADMIT, PROMOTE, REJECT_FULL, SKIP_INELIGIBLE] }
+        inputs: { type: object, additionalProperties: true }
+        reason: { type: string, nullable: true }
+        decided_at: { type: string, format: date-time }
+
+    MetricsSummary:
+      type: object
+      required: [window_days, utilization, jain_index, waitlist_length]
+      properties:
+        window_days: { type: integer }
+        utilization: { type: number, minimum: 0, maximum: 1 }
+        jain_index: { type: number, minimum: 0, maximum: 1 }
+        waitlist_length: { type: integer }
+        wait_seconds:
+          type: object
+          properties:
+            mean: { type: number }
+            p95: { type: number }
+            max: { type: number }
