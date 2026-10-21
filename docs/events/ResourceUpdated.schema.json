@@ -1,0 +1,75 @@
+{
+  "$defs": {
+    "ResourceUpdatedPayload": {
+      "additionalProperties": false,
+      "properties": {
+        "change": {
+          "enum": [
+            "created",
+            "updated",
+            "deactivated"
+          ],
+          "title": "Change",
+          "type": "string"
+        },
+        "resource_id": {
+          "format": "uuid",
+          "title": "Resource Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "resource_id",
+        "change"
+      ],
+      "title": "ResourceUpdatedPayload",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "aggregate_id": {
+      "format": "uuid",
+      "title": "Aggregate Id",
+      "type": "string"
+    },
+    "aggregate_type": {
+      "const": "resource",
+      "default": "resource",
+      "title": "Aggregate Type",
+      "type": "string"
+    },
+    "event_id": {
+      "format": "uuid",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_type": {
+      "const": "ResourceUpdated",
+      "default": "ResourceUpdated",
+      "title": "Event Type",
+      "type": "string"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "payload": {
+      "$ref": "#/$defs/ResourceUpdatedPayload"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "occurred_at",
+    "aggregate_id",
+    "payload"
+  ],
+  "title": "ResourceUpdated",
+  "type": "object"
+}
