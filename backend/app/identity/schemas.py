@@ -3,7 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, StringConstraints
 
-# Simple format check. EmailStr rejects reserved domains (.test, .local) that we use in dev and tests.
+# Simple format check. EmailStr rejects reserved domains (.test, .local)
+# that we use in dev and tests.
 Email = Annotated[
     str,
     StringConstraints(
