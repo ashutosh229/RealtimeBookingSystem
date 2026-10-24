@@ -29,6 +29,7 @@ jobs:
           POSTGRES_USER: rtbs
           POSTGRES_PASSWORD: change_me
           POSTGRES_DB: rtbs
+
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U rtbs" --health-interval 5s
