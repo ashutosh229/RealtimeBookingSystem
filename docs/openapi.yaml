@@ -585,6 +585,7 @@ components:
                 - VALIDATION_ERROR
                 - RATE_LIMITED
                 - SERVICE_BUSY
+                - INTERNAL_ERROR
             message: { type: string }
             details: { type: object, additionalProperties: true }
             request_id: { type: string }
