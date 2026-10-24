@@ -7,9 +7,7 @@ from pydantic import BaseModel, Field, StringConstraints
 # that we use in dev and tests.
 Email = Annotated[
     str,
-    StringConstraints(
-        strip_whitespace=True, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-    ),
+    StringConstraints(strip_whitespace=True, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$"),
 ]
 
 
