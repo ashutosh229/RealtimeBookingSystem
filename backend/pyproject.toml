@@ -4,7 +4,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B"]
-ignore = ["B008"]
+ignore = ["B008", "E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
