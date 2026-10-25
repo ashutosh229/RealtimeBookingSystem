@@ -586,6 +586,8 @@ components:
                 - RATE_LIMITED
                 - SERVICE_BUSY
                 - INTERNAL_ERROR
+                - HAS_ACTIVE_BOOKINGS
+                - NOT_IMPLEMENTED
             message: { type: string }
             details: { type: object, additionalProperties: true }
             request_id: { type: string }
