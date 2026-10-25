@@ -37,6 +37,11 @@ async def get_for_update(conn: asyncpg.Connection, rid: UUID) -> asyncpg.Record 
     return await conn.fetchrow(_SELECT + " WHERE r.resource_id = $1 FOR UPDATE OF r", rid)
 
 
+async def get_for_share(conn: asyncpg.Connection, rid: UUID) -> asyncpg.Record | None:
+    """Booking path: blocks against admin capacity changes and deactivation (which take FOR UPDATE)."""
+    return await conn.fetchrow(_SELECT + " WHERE r.resource_id = $1 FOR SHARE OF r", rid)
+
+
 def _like_escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
