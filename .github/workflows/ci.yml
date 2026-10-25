@@ -50,7 +50,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: alembic upgrade head
       - run: alembic downgrade base && alembic upgrade head
-      - run: pytest tests/integration
+      - run: pytest tests/integration tests/concurrency
   mobile:
     runs-on: ubuntu-latest
     defaults:
