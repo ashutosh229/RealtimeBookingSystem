@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.admin.router import router as admin_router
+from app.allocation.router import router as waitlist_router
 from app.booking.router import router as booking_router
 from app.identity.router import router as identity_router
 from app.platform import db, errors
@@ -25,6 +26,7 @@ app.include_router(resources_router, prefix="/v1")
 app.include_router(resources_admin_router, prefix="/v1")
 app.include_router(booking_router, prefix="/v1")
 app.include_router(admin_router, prefix="/v1")
+app.include_router(waitlist_router, prefix="/v1")
 
 
 @app.get("/healthz")
