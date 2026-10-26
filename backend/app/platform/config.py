@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     db_pool_size: int = 10
     campus_tz: str = "UTC"
     fair_share_window_days: int = 14
+    sweep_interval_seconds: int = 30
 
     @property
     def dsn(self) -> str:
