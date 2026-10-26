@@ -253,3 +253,70 @@ async def mark_promoted(conn: asyncpg.Connection, bid: UUID, now: datetime) -> N
         bid,
         now,
     )
+
+
+async def has_queue(
+    conn: asyncpg.Connection,
+    resource_id: UUID,
+    start: datetime,
+    end: datetime,
+    now: datetime,
+) -> bool:
+    """Is anyone waiting for a window that overlaps [start, end)?"""
+    return await conn.fetchval(
+        "SELECT EXISTS (SELECT 1 FROM waitlist_entries WHERE resource_id = $1 AND status = 'ACTIVE'"
+        " AND start_time < $3 AND end_time > $2 AND expires_at > $4)",
+        resource_id,
+        start,
+        end,
+        now,
+    )
+
+
+async def lock_expired_waiting(
+    conn: asyncpg.Connection, now: datetime, resource_ids: list[UUID] | None, limit: int
+) -> list[asyncpg.Record]:
+    return await conn.fetch(
+        "SELECT b.booking_id, b.user_id, b.resource_id, b.start_time, b.end_time, b.quantity"
+        " FROM bookings b JOIN waitlist_entries w ON w.booking_id = b.booking_id"
+        " WHERE b.status = 'WAITLISTED' AND w.status = 'ACTIVE' AND w.expires_at <= $1"
+        " AND ($2::uuid[] IS NULL OR b.resource_id = ANY($2))"
+        " ORDER BY b.booking_id LIMIT $3 FOR UPDATE OF b SKIP LOCKED",
+        now,
+        resource_ids,
+        limit,
+    )
+
+
+async def mark_expired(conn: asyncpg.Connection, bid: UUID, now: datetime) -> None:
+    await conn.execute(
+        "UPDATE bookings SET status = 'EXPIRED', updated_at = $2, version = version + 1 WHERE booking_id = $1",
+        bid,
+        now,
+    )
+    await conn.execute(
+        "UPDATE waitlist_entries SET status = 'EXPIRED' WHERE booking_id = $1 AND status = 'ACTIVE'",
+        bid,
+    )
+
+
+async def complete_batch(
+    conn: asyncpg.Connection, now: datetime, resource_ids: list[UUID] | None, limit: int
+) -> int:
+    """CONFIRMED -> COMPLETED once the booking has ended. The ledger is left alone: past slots stay counted."""
+    rows = await conn.fetch(
+        "WITH picked AS ("
+        "  SELECT booking_id FROM bookings WHERE status = 'CONFIRMED' AND end_time <= $1"
+        "  AND ($2::uuid[] IS NULL OR resource_id = ANY($2))"
+        "  ORDER BY booking_id LIMIT $3 FOR UPDATE SKIP LOCKED),"
+        " done AS ("
+        "  UPDATE bookings b SET status = 'COMPLETED', updated_at = $1, version = b.version + 1"
+        "  FROM picked p WHERE b.booking_id = p.booking_id RETURNING b.booking_id)"
+        " INSERT INTO booking_status_history (booking_id, from_status, to_status, reason)"
+        " SELECT booking_id, 'CONFIRMED'::booking_status, 'COMPLETED'::booking_status, 'finished' FROM done"
+        " RETURNING booking_id",
+        now,
+        resource_ids,
+        limit,
+    )
+    return len(rows)
