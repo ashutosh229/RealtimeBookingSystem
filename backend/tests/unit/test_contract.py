@@ -9,9 +9,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 SPEC = ROOT / "docs" / "openapi.yaml"
 APP_DIR = ROOT / "backend" / "app"
-pytestmark = pytest.mark.skipif(
-    not SPEC.exists(), reason="docs/openapi.yaml not present"
-)
+pytestmark = pytest.mark.skipif(not SPEC.exists(), reason="docs/openapi.yaml not present")
 
 HTTP = {"get", "post", "put", "patch", "delete"}
 
@@ -52,10 +50,7 @@ def spec() -> dict:
 
 def spec_ops() -> dict:
     return {
-        (m, p): op
-        for p, item in spec()["paths"].items()
-        for m, op in item.items()
-        if m in HTTP
+        (m, p): op for p, item in spec()["paths"].items() for m, op in item.items() if m in HTTP
     }
 
 
@@ -91,25 +86,21 @@ def deref(root: dict, node: dict) -> dict:
 
 def test_implemented_routes_are_documented():
     undocumented = app_ops() - set(spec_ops())
-    assert (
-        not undocumented
-    ), f"routes missing from docs/openapi.yaml: {sorted(undocumented)}"
+    assert not undocumented, f"routes missing from docs/openapi.yaml: {sorted(undocumented)}"
 
 
 def test_documented_routes_are_implemented_or_listed():
     missing = set(spec_ops()) - app_ops() - NOT_YET
-    assert (
-        not missing
-    ), f"documented but not implemented (add to NOT_YET if intended): {sorted(missing)}"
+    assert not missing, (
+        f"documented but not implemented (add to NOT_YET if intended): {sorted(missing)}"
+    )
 
 
 def test_not_yet_list_has_no_stale_entries():
-    assert NOT_YET <= set(
-        spec_ops()
-    ), "NOT_YET lists operations the spec does not document"
-    assert (
-        not NOT_YET & app_ops()
-    ), f"now implemented, remove from NOT_YET: {sorted(NOT_YET & app_ops())}"
+    assert NOT_YET <= set(spec_ops()), "NOT_YET lists operations the spec does not document"
+    assert not NOT_YET & app_ops(), (
+        f"now implemented, remove from NOT_YET: {sorted(NOT_YET & app_ops())}"
+    )
 
 
 def test_parameters_match_the_contract():
@@ -118,13 +109,11 @@ def test_parameters_match_the_contract():
         if (method, path) not in app_ops():
             continue
         documented = {
-            (deref(root, p)["name"], deref(root, p)["in"])
-            for p in op.get("parameters", [])
+            (deref(root, p)["name"], deref(root, p)["in"]) for p in op.get("parameters", [])
         }
         documented -= {(n, "query") for n in PARAMS_NOT_YET.get((method, path), set())}
         built = {
-            (p["name"], p["in"])
-            for p in gen["paths"]["/v1" + path][method].get("parameters", [])
+            (p["name"], p["in"]) for p in gen["paths"]["/v1" + path][method].get("parameters", [])
         }
         if documented != built:
             problems.append(
@@ -142,9 +131,7 @@ def test_schema_properties_match_the_contract():
             None,
         )
         if built is None:
-            problems.append(
-                f"{yaml_name}: model {model} not found in the generated schema"
-            )
+            problems.append(f"{yaml_name}: model {model} not found in the generated schema")
             continue
         documented = set(root["components"]["schemas"][yaml_name]["properties"])
         if documented != set(built["properties"]):
@@ -169,10 +156,10 @@ def test_every_error_code_in_source_is_in_the_contract():
             found |= set(re.findall(p, text))
     assert len(found) >= 15, f"code scanner looks broken, found only {sorted(found)}"
     documented = set(
-        spec()["components"]["schemas"]["Error"]["properties"]["error"]["properties"][
-            "code"
-        ]["enum"]
+        spec()["components"]["schemas"]["Error"]["properties"]["error"]["properties"]["code"][
+            "enum"
+        ]
     )
-    assert (
-        not found - documented
-    ), f"error codes missing from the contract: {sorted(found - documented)}"
+    assert not found - documented, (
+        f"error codes missing from the contract: {sorted(found - documented)}"
+    )
