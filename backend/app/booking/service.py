@@ -103,12 +103,21 @@ async def _create_once(
                 f"At most {res['max_active_per_user']} active bookings per resource",
             )
 
-        got = await ledger.acquire(conn, res["resource_id"], slots, qty, res["capacity"])
+        queued = await repo.has_queue(conn, res["resource_id"], cmd.start_time, cmd.end_time, now)
+        got = (
+            False
+            if queued
+            else await ledger.acquire(conn, res["resource_id"], slots, qty, res["capacity"])
+        )
         if not got and not cmd.waitlist_if_full:
             body = {
                 "error": {
                     "code": "CAPACITY_UNAVAILABLE",
-                    "message": "No capacity for the requested time",
+                    "message": (
+                        "A waitlist already exists for this time"
+                        if queued
+                        else "No capacity for the requested time"
+                    ),
                     "details": {},
                 }
             }
@@ -165,7 +174,10 @@ async def _create_once(
                 res["policy_name"],
                 POLICY_VERSION,
                 "REJECT_FULL",
-                {"reason": "capacity_unavailable", "waitlist_seq": wl["seq"]},
+                {
+                    "reason": "queue_exists" if queued else "capacity_unavailable",
+                    "waitlist_seq": wl["seq"],
+                },
             )
             event_cls = events.BookingWaitlisted
 
@@ -347,3 +359,48 @@ async def promote_locked(
             ),
         )
     return True
+
+
+async def _expire_batch(conn, now, resource_ids, limit: int) -> int:
+    async with conn.transaction():
+        rows = await repo.lock_expired_waiting(conn, now, resource_ids, limit)
+        for b in rows:
+            check_transition(BookingStatus.WAITLISTED, BookingStatus.EXPIRED)
+            bid = b["booking_id"]
+            await repo.mark_expired(conn, bid, now)
+            await repo.add_history(conn, bid, "WAITLISTED", "EXPIRED", None, "waitlist_expired")
+            await outbox.add(
+                conn,
+                events.BookingExpired(
+                    aggregate_id=bid,
+                    occurred_at=now,
+                    payload=events.BookingPayload(
+                        booking_id=bid,
+                        user_id=b["user_id"],
+                        resource_id=b["resource_id"],
+                        start_time=b["start_time"],
+                        end_time=b["end_time"],
+                        quantity=b["quantity"],
+                        status=BookingStatus.EXPIRED.value,
+                    ),
+                ),
+            )
+    return len(rows)
+
+
+async def expire_waitlisted(conn, now, resource_ids=None, batch: int = 200) -> int:
+    total = 0
+    while True:
+        n = await _expire_batch(conn, now, resource_ids, batch)
+        total += n
+        if n < batch:
+            return total
+
+
+async def complete_finished(conn, now, resource_ids=None, batch: int = 500) -> int:
+    total = 0
+    while True:
+        n = await repo.complete_batch(conn, now, resource_ids, batch)
+        total += n
+        if n < batch:
+            return total
