@@ -46,6 +46,14 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+  worker:
+    build: ../backend
+    command: ["python", "-m", "app.worker.main"]
+    env_file: ../.env
+    depends_on:
+      postgres: { condition: service_healthy }
+    stop_grace_period: 30s
+    restart: unless-stopped
 volumes:
   pgdata:
   mqdata:
