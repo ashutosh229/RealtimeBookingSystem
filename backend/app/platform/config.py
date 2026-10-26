@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     refresh_ttl_days: int = 7
     db_pool_size: int = 10
     campus_tz: str = "UTC"
+    fair_share_window_days: int = 14
 
     @property
     def dsn(self) -> str:

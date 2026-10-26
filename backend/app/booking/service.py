@@ -312,3 +312,38 @@ async def force_deactivate(conn, admin: dict, resource_id: UUID):
             resource_id,
         )
     return await resources_repo.get(conn, resource_id)
+
+
+async def promote_locked(
+    conn, res, row, now, policy_name: str, policy_version: str, inputs: dict
+) -> bool:
+    """Confirm one WAITLISTED booking whose row the caller already holds FOR UPDATE.
+    Returns False (changing nothing) when the ledger cannot absorb it."""
+    bid = row["booking_id"]
+    slots = booking_slots(row["start_time"], row["end_time"], res["slot_minutes"])
+    async with conn.transaction():  # savepoint: a failure leaves no partial change
+        if not await ledger.acquire(
+            conn, res["resource_id"], slots, row["quantity"], res["capacity"]
+        ):
+            return False
+        check_transition(BookingStatus.WAITLISTED, BookingStatus.CONFIRMED)
+        await repo.mark_promoted(conn, bid, now)
+        await repo.add_history(conn, bid, "WAITLISTED", "CONFIRMED", None, "promoted")
+        await repo.add_allocation(conn, bid, policy_name, policy_version, "PROMOTE", inputs)
+        await outbox.add(
+            conn,
+            events.BookingPromoted(
+                aggregate_id=bid,
+                occurred_at=now,
+                payload=events.BookingPayload(
+                    booking_id=bid,
+                    user_id=row["user_id"],
+                    resource_id=res["resource_id"],
+                    start_time=row["start_time"],
+                    end_time=row["end_time"],
+                    quantity=row["quantity"],
+                    status=BookingStatus.CONFIRMED.value,
+                ),
+            ),
+        )
+    return True

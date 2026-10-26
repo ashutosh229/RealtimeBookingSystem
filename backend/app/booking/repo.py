@@ -236,3 +236,20 @@ async def list_for_user(
         rows = rows[:limit]
         nxt = _encode_cursor(rows[-1]["start_time"], rows[-1]["booking_id"])
     return rows, nxt
+
+
+async def mark_promoted(conn: asyncpg.Connection, bid: UUID, now: datetime) -> None:
+    done = await conn.execute(
+        "UPDATE bookings SET status = 'CONFIRMED', confirmed_at = $2, updated_at = $2, version = version + 1"
+        " WHERE booking_id = $1 AND status = 'WAITLISTED'",
+        bid,
+        now,
+    )
+    if done != "UPDATE 1":
+        raise RuntimeError(f"booking {bid} was not WAITLISTED at promotion")
+    await conn.execute(
+        "UPDATE waitlist_entries SET status = 'PROMOTED', promoted_at = $2"
+        " WHERE booking_id = $1 AND status = 'ACTIVE'",
+        bid,
+        now,
+    )
