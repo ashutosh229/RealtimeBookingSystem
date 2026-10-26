@@ -57,7 +57,7 @@ def validate_interval(
         raise _bad("start_time must be in the future")
     if start > now + timedelta(days=res["booking_horizon_days"]):
         raise _bad(f"bookings open {res['booking_horizon_days']} days ahead", "OUT_OF_HORIZON")
-    slots = [(start + i * step).astimezone(UTC) for i in range(n)]
+    slots = booking_slots(start, end, res["slot_minutes"])
     allowed = set(day_slots(res, start.astimezone(zone_of(res)).date()))
     if not set(slots) <= allowed:
         raise _bad(
@@ -81,3 +81,9 @@ def range_slots(res: Mapping, frm: datetime, to: datetime) -> list[datetime]:
         out += [s for s in day_slots(res, day) if frm <= s < to]
         day += timedelta(days=1)
     return out
+
+
+def booking_slots(start: datetime, end: datetime, slot_minutes: int) -> list[datetime]:
+    """UTC slot starts covered by a validated booking. Single source of truth for acquire AND release."""
+    step = timedelta(minutes=slot_minutes)
+    return [(start + i * step).astimezone(UTC) for i in range((end - start) // step)]

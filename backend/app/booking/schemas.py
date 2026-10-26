@@ -26,3 +26,19 @@ class BookingOut(BaseModel):
     waitlist_id: UUID | None = None
     expires_at: datetime | None = None
     created_at: datetime
+
+
+class HistoryItem(BaseModel):
+    from_status: Status | None = None
+    to_status: Status
+    reason: str | None = None
+    created_at: datetime
+
+
+class BookingDetail(BookingOut):
+    history: list[HistoryItem]
+
+
+class BookingPage(BaseModel):
+    items: list[BookingOut]
+    next_cursor: str | None = None

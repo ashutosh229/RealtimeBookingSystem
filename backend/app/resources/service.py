@@ -119,13 +119,7 @@ async def update(conn: asyncpg.Connection, rid: UUID, body: ResourceUpdate) -> a
     return await repo.get(conn, rid)
 
 
-async def deactivate(conn: asyncpg.Connection, rid: UUID, force: bool) -> asyncpg.Record:
-    if force:
-        raise ApiError(
-            501,
-            "NOT_IMPLEMENTED",
-            "force deactivation arrives with cancellation (task 2.5)",
-        )
+async def deactivate(conn: asyncpg.Connection, rid: UUID) -> asyncpg.Record:
     async with conn.transaction():
         cur = await repo.get_for_update(conn, rid)
         if cur is None:

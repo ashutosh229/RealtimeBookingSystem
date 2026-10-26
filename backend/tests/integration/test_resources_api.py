@@ -247,12 +247,6 @@ async def test_deactivate_rules(client):
         )
     r = await client.post(f"/v1/admin/resources/{busy['resource_id']}/deactivate", headers=admin)
     assert r.status_code == 409 and r.json()["error"]["code"] == "HAS_ACTIVE_BOOKINGS"
-    r = await client.post(
-        f"/v1/admin/resources/{idle['resource_id']}/deactivate",
-        json={"force": True},
-        headers=admin,
-    )
-    assert r.status_code == 501
     r = await client.post(f"/v1/admin/resources/{idle['resource_id']}/deactivate", headers=admin)
     assert r.status_code == 200 and r.json()["active"] is False
     assert (

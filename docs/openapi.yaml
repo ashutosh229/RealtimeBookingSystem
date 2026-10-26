@@ -249,7 +249,7 @@ paths:
         - { $ref: "#/components/parameters/Cursor" }
       responses:
         "200":
-          description: Page of the caller's bookings, newest first
+          description: Page of the caller's bookings, by start time, latest first
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BookingPage" }

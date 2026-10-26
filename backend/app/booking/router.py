@@ -1,9 +1,12 @@
-import asyncpg
-from fastapi import APIRouter, Depends, Header, Request
-from fastapi.responses import JSONResponse
+from uuid import UUID
 
-from app.booking import service
-from app.booking.schemas import BookingCreate, BookingOut
+import asyncpg
+from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi.responses import JSONResponse
+from pydantic import AwareDatetime
+
+from app.booking import repo, service
+from app.booking.schemas import BookingCreate, BookingDetail, BookingOut, BookingPage, Status
 from app.identity.deps import current_user
 from app.platform.db import get_conn
 from app.platform.errors import ApiError
@@ -57,3 +60,43 @@ async def join_waitlist(
     return _respond(
         request, await service.create_booking(conn, user, forced, _key(idempotency_key))
     )
+
+
+@router.get("/bookings/{booking_id}", response_model=BookingDetail, tags=["bookings"])
+async def get_booking(
+    booking_id: UUID,
+    user: dict = Depends(current_user),
+    conn: asyncpg.Connection = Depends(get_conn),
+):
+    return await service.get_booking(conn, user, booking_id)
+
+
+@router.post("/bookings/{booking_id}/cancel", response_model=BookingOut, tags=["bookings"])
+async def cancel_booking(
+    booking_id: UUID,
+    user: dict = Depends(current_user),
+    conn: asyncpg.Connection = Depends(get_conn),
+):
+    return dict(await service.cancel_booking(conn, user, booking_id))
+
+
+@router.get("/users/me/bookings", response_model=BookingPage, tags=["bookings"])
+async def my_bookings(
+    status: Status | None = None,
+    from_: AwareDatetime | None = Query(None, alias="from"),
+    to: AwareDatetime | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    cursor: str | None = None,
+    user: dict = Depends(current_user),
+    conn: asyncpg.Connection = Depends(get_conn),
+):
+    rows, nxt = await repo.list_for_user(
+        conn,
+        user["user_id"],
+        status=status,
+        frm=from_,
+        to=to,
+        limit=limit,
+        cursor=cursor,
+    )
+    return {"items": [dict(r) for r in rows], "next_cursor": nxt}

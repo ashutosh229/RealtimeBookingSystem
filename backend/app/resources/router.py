@@ -11,7 +11,6 @@ from app.platform.errors import ApiError
 from app.resources import repo, service
 from app.resources.schemas import (
     AvailabilityOut,
-    DeactivateBody,
     ResourceCreate,
     ResourceOut,
     ResourcePage,
@@ -88,12 +87,3 @@ async def admin_update(
     conn: asyncpg.Connection = Depends(get_conn),
 ):
     return dict(await service.update(conn, resource_id, body))
-
-
-@admin_router.post("/{resource_id}/deactivate", response_model=ResourceOut)
-async def admin_deactivate(
-    resource_id: UUID,
-    body: DeactivateBody | None = None,
-    conn: asyncpg.Connection = Depends(get_conn),
-):
-    return dict(await service.deactivate(conn, resource_id, bool(body and body.force)))

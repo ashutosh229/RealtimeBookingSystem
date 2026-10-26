@@ -3,7 +3,7 @@ import hashlib
 import json
 import random
 from dataclasses import dataclass
-from datetime import UTC
+from datetime import UTC, timedelta
 from uuid import UUID
 
 import asyncpg
@@ -11,12 +11,19 @@ import asyncpg
 from app.booking import idempotency as idem
 from app.booking import ledger, repo
 from app.booking.schemas import BookingCreate, BookingOut
-from app.booking.state_machine import BookingStatus, check_transition
+from app.booking.state_machine import (
+    TERMINAL,
+    BookingStatus,
+    CapacityEffect,
+    capacity_effect,
+    check_transition,
+)
 from app.messaging import events, outbox
 from app.platform import clock
 from app.platform.errors import ApiError
 from app.resources import repo as resources_repo
 from app.resources.policy import policy_for
+from app.resources.slots import booking_slots
 
 POLICY_VERSION = "1.0"
 MAX_ATTEMPTS = 3
@@ -194,3 +201,114 @@ async def _create_once(
         code = 201 if got else 202
         await idem.complete(conn, uid, key, code, body, bid)
         return Result(code, body)
+
+
+def check_cancellable(b, role: str, now) -> None:
+    """Cancellation policy (pure). Waitlist entries can always be withdrawn."""
+    closed = ApiError(409, "CANCELLATION_WINDOW_CLOSED", "This booking can no longer be cancelled")
+    if b["status"] == "WAITLISTED":
+        return
+    if role == "admin":
+        if b["end_time"] <= now:
+            raise closed
+        return
+    if b["start_time"] - timedelta(minutes=b["min_cancel_notice_minutes"]) <= now:
+        raise closed
+
+
+async def cancel_locked(
+    conn, b, actor_id: UUID, reason: str, now, emit_release: bool = True
+) -> None:
+    """Cancel one booking whose row is already locked (FOR UPDATE). Call inside a transaction."""
+    src = BookingStatus(b["status"])
+    effect = capacity_effect(
+        src, BookingStatus.CANCELLED
+    )  # raises IllegalTransition for bad states
+    bid = b["booking_id"]
+    if effect == CapacityEffect.RELEASE:
+        slots = booking_slots(b["start_time"], b["end_time"], b["slot_minutes"])
+        await ledger.release(conn, b["resource_id"], slots, b["quantity"])
+    else:
+        await repo.cancel_waitlist_entry(conn, bid)
+    await repo.mark_cancelled(conn, bid, now)
+    await repo.add_history(conn, bid, src.value, BookingStatus.CANCELLED.value, actor_id, reason)
+    await outbox.add(
+        conn,
+        events.BookingCancelled(
+            aggregate_id=bid,
+            occurred_at=now,
+            payload=events.BookingPayload(
+                booking_id=bid,
+                user_id=b["user_id"],
+                resource_id=b["resource_id"],
+                start_time=b["start_time"],
+                end_time=b["end_time"],
+                quantity=b["quantity"],
+                status=BookingStatus.CANCELLED.value,
+            ),
+        ),
+    )
+    if effect == CapacityEffect.RELEASE and emit_release:
+        await outbox.add(
+            conn,
+            events.CapacityReleased(
+                aggregate_id=bid,
+                occurred_at=now,
+                payload=events.CapacityReleasedPayload(
+                    resource_id=b["resource_id"],
+                    booking_id=bid,
+                    start_time=b["start_time"],
+                    end_time=b["end_time"],
+                    quantity=b["quantity"],
+                ),
+            ),
+        )
+
+
+async def cancel_booking(conn, actor: dict, booking_id: UUID):
+    now = clock.now()
+    async with conn.transaction():
+        b = await repo.get_for_update(conn, booking_id)
+        if b is None or (b["user_id"] != actor["user_id"] and actor["role"] != "admin"):
+            raise ApiError(
+                404, "NOT_FOUND", "Booking not found"
+            )  # not 403: do not reveal existence
+        if BookingStatus(b["status"]) not in TERMINAL:  # already terminal: return it unchanged
+            check_cancellable(b, actor["role"], now)
+            reason = "user_cancel" if b["user_id"] == actor["user_id"] else "admin_cancel"
+            await cancel_locked(conn, b, actor["user_id"], reason, now)
+    return await repo.get_view(conn, booking_id)
+
+
+async def get_booking(conn, user: dict, booking_id: UUID) -> dict:
+    row = await repo.get_view(conn, booking_id)
+    if row is None or (row["user_id"] != user["user_id"] and user["role"] != "admin"):
+        raise ApiError(404, "NOT_FOUND", "Booking not found")
+    return {
+        **dict(row),
+        "history": [dict(h) for h in await repo.history(conn, booking_id)],
+    }
+
+
+async def force_deactivate(conn, admin: dict, resource_id: UUID):
+    """Deactivate a resource and cancel its future bookings atomically.
+    The FOR UPDATE lock waits for in-flight creates (they hold FOR SHARE) and blocks new ones.
+    """
+    now = clock.now()
+    async with conn.transaction():
+        if await resources_repo.get_for_update(conn, resource_id) is None:
+            raise ApiError(404, "NOT_FOUND", "Resource not found")
+        for b in await repo.active_for_resource_for_update(conn, resource_id, now):
+            await cancel_locked(
+                conn,
+                b,
+                admin["user_id"],
+                "resource_deactivated",
+                now,
+                emit_release=False,
+            )
+        await conn.execute(
+            "UPDATE resources SET active = false, version = version + 1 WHERE resource_id = $1",
+            resource_id,
+        )
+    return await resources_repo.get(conn, resource_id)
