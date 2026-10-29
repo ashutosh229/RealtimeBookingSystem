@@ -50,11 +50,12 @@ async def insert_booking(
     key: str,
     req_hash: str,
     confirmed_at: datetime | None,
+    created_at: datetime,
 ) -> asyncpg.Record:
     return await conn.fetchrow(
         "INSERT INTO bookings (user_id, resource_id, start_time, end_time, quantity, status,"
-        " is_exclusive, idempotency_key, request_hash, confirmed_at)"
-        " VALUES ($1, $2, $3, $4, $5, $6::booking_status, $7, $8, $9, $10)"
+        " is_exclusive, idempotency_key, request_hash, confirmed_at, created_at)"
+        " VALUES ($1, $2, $3, $4, $5, $6::booking_status, $7, $8, $9, $10, $11)"
         " RETURNING booking_id, created_at",
         user_id,
         resource_id,
@@ -66,6 +67,7 @@ async def insert_booking(
         key,
         req_hash,
         confirmed_at,
+        created_at,
     )
 
 
