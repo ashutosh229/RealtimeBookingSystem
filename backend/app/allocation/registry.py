@@ -1,8 +1,11 @@
 from app.allocation.base import AllocationPolicy
 from app.allocation.fair_share import FairSharePolicy
+from app.allocation.fair_share_q import FairShareQueuePolicy
 from app.allocation.fifo import FifoPolicy
 
-POLICIES: dict[str, AllocationPolicy] = {p.name: p for p in (FifoPolicy(), FairSharePolicy())}
+POLICIES: dict[str, AllocationPolicy] = {
+    p.name: p for p in (FifoPolicy(), FairSharePolicy(), FairShareQueuePolicy())
+}
 
 
 def policy_by_name(name: str) -> AllocationPolicy:
