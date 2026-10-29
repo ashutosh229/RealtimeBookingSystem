@@ -5,10 +5,11 @@ import pytest
 
 from app.allocation.base import AllocationContext, Candidate
 from app.allocation.fair_share import FairSharePolicy
+from app.allocation.fair_share_q import FairShareQueuePolicy
 from app.allocation.fifo import FifoPolicy
 from app.allocation.metrics import jain_index, mean_ci95, percentile
 from app.allocation.registry import POLICIES, policy_by_name
-from app.allocation.simulator import Request, SimConfig, generate_trace, simulate
+from app.allocation.simulator import Request, SimConfig, generate_trace, heavy_set, simulate
 
 T = datetime(2030, 1, 1, tzinfo=UTC)
 FIFO, FAIR = FifoPolicy(), FairSharePolicy()
@@ -77,7 +78,7 @@ def test_explain_has_the_decision_inputs():
 
 
 def test_registry():
-    assert set(POLICIES) == {"FIFO", "FAIR_SHARE"}
+    assert set(POLICIES) == {"FIFO", "FAIR_SHARE", "FAIR_SHARE_Q"}
     assert policy_by_name("FAIR_SHARE").version == "1.0"
     with pytest.raises(ValueError):
         policy_by_name("LOTTERY")
@@ -192,3 +193,85 @@ def test_simulation_is_reproducible():
     cfg, trace = SimConfig(rounds=20, capacity=3), generate_trace(30, 20, 3, 2.0, seed=5)
     a, b = simulate(FAIR, trace, cfg), simulate(FAIR, trace, cfg)
     assert a.allocated == b.allocated and a.waits == b.waits
+
+
+def test_queue_weighting_ranks_contended_winners_lower():
+    q = FairShareQueuePolicy(weight=2.0)
+    c = AllocationContext(now=T, recent_allocations={1: 2, 2: 2}, recent_contended={1: 2, 2: 0})
+    cs = [cand("a", 1, seq=1), cand("b", 2, seq=2)]
+    assert ids(q.rank(cs, c)) == [
+        "b",
+        "a",
+    ]  # equal plain counts, but a's wins were contended
+    assert ids(FAIR.rank(cs, c)) == [
+        "a",
+        "b",
+    ]  # plain fair-share cannot tell them apart
+
+
+def test_weight_one_is_plain_fair_share():
+    cs = [cand(i, i % 4, seq=i, minutes_ago=i) for i in range(10)]
+    c = AllocationContext(
+        now=T, recent_allocations={0: 3, 1: 1, 2: 2}, recent_contended={0: 5, 1: 2}
+    )
+    assert ids(FairShareQueuePolicy(weight=1.0).rank(cs, c)) == ids(FAIR.rank(cs, c))
+
+
+def test_weight_below_one_is_rejected():
+    with pytest.raises(ValueError):
+        FairShareQueuePolicy(weight=0.5)
+
+
+def test_queue_policy_explain():
+    c = AllocationContext(now=T, recent_allocations={1: 4}, recent_contended={1: 2})
+    e = FairShareQueuePolicy(3.0).explain(cand("a", 1, seq=3, minutes_ago=2), c)
+    assert (e["policy"], e["usage"], e["weight"], e["recent_contended"]) == (
+        "FAIR_SHARE_Q",
+        8.0,
+        3.0,
+        2,
+    )
+
+
+def test_new_fairness_metrics():
+    trace = flood({0: 4, 1: 1, 2: 1})
+    cfg = SimConfig(
+        rounds=4,
+        capacity=1,
+        patience=100,
+        window_rounds=100,
+        heavy_users=frozenset({0}),
+    )
+    fifo, fair = simulate(FIFO, trace, cfg), simulate(FAIR, trace, cfg)
+    assert fifo.metrics["heavy_share_req"] == pytest.approx(4 / 6)
+    assert fifo.metrics["heavy_share_alloc"] == pytest.approx(1.0)
+    assert fair.metrics["heavy_share_alloc"] == pytest.approx(0.5)
+    assert fifo.metrics["zero_alloc_rate"] == pytest.approx(2 / 3)
+    assert fair.metrics["zero_alloc_rate"] == 0.0
+
+
+def test_contended_wins_are_counted():
+    trace = flood({0: 1, 1: 1, 2: 1})
+    k1 = simulate(FIFO, trace, SimConfig(rounds=3, capacity=1, patience=100, contention_k=1))
+    k2 = simulate(FIFO, trace, SimConfig(rounds=3, capacity=1, patience=100, contention_k=2))
+    assert k1.contended == Counter({0: 1, 1: 1})  # waiting after each win: 2, 1, 0
+    assert k2.contended == Counter({0: 1})
+
+
+def test_queue_policy_in_simulator_is_deterministic_and_conserving():
+    cfg = SimConfig(rounds=30, capacity=5, patience=4)
+    trace = generate_trace(50, 30, 5, 3.0, seed=1, heavy_peak=0.8)
+    a = simulate(FairShareQueuePolicy(2.0), trace, cfg)
+    b = simulate(FairShareQueuePolicy(2.0), trace, cfg)
+    assert a.allocated == b.allocated and max(a.alloc_per_round) <= 5
+    assert all(a.allocated[u] <= a.requested[u] for u in a.requested)
+
+
+def test_heavy_peak_concentrates_heavy_requests_and_default_is_unchanged():
+    n_heavy = len(heavy_set(100))
+    peaked = generate_trace(100, 100, 50, 4.0, seed=3, heavy_peak=1.0)
+    assert all(r.round % 10 < 2 for r in peaked if r.user < n_heavy)
+    assert generate_trace(100, 100, 50, 4.0, seed=3) == generate_trace(
+        100, 100, 50, 4.0, seed=3, heavy_peak=0.0
+    )
+    assert len(peaked) == round(4.0 * 50 * 100)
