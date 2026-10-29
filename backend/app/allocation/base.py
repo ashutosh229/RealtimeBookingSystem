@@ -1,7 +1,7 @@
 """Policy interface shared by the live promoter and the simulator. No database, no I/O."""
 
 from collections.abc import Hashable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
 
@@ -20,6 +20,9 @@ class AllocationContext:
     now: datetime
     recent_allocations: Mapping[Hashable, int]  # user_id -> allocations inside the rolling window
     window_days: int = 14
+    recent_contended: Mapping[Hashable, int] = field(
+        default_factory=dict
+    )  # of those, won under contention
 
 
 class AllocationPolicy(Protocol):
