@@ -57,13 +57,12 @@ async def promote_for_resource(
             return []
 
         policy = policy_by_name(res["policy_name"])
-        window = get_settings().fair_share_window_days
-        recent = await alloc_repo.recent_counts(
-            conn,
-            list({r["user_id"] for r in rows}),
-            res["type"],
-            now - timedelta(days=window),
-        )
+        settings = get_settings()
+        window, k = settings.fair_share_window_days, settings.contention_min_waiting
+        since = now - timedelta(days=window)
+        user_ids = list({r["user_id"] for r in rows})
+        recent = await alloc_repo.recent_counts(conn, user_ids, res["type"], since)
+        contended = await alloc_repo.recent_contended_counts(conn, user_ids, res["type"], since, k)
         by_id = {r["booking_id"]: r for r in rows}
         pending = [
             Candidate(
@@ -78,10 +77,16 @@ async def promote_for_resource(
 
         halt = False
         while pending and not halt:
-            ctx = AllocationContext(now=now, recent_allocations=dict(recent), window_days=window)
-            winner = None
+            ctx = AllocationContext(
+                now=now,
+                recent_allocations=dict(recent),
+                window_days=window,
+                recent_contended=dict(contended),
+            )
+            winner, winner_waiting = None, 0
             for cand in policy.rank(pending, ctx):
                 row = by_id[cand.id]
+                waiting_after = len(pending) - 1  # others still queued if this one wins
                 reason = _ineligible(res, row, now)
                 if reason:
                     await alloc_repo.add_skip_once(
@@ -94,15 +99,10 @@ async def promote_for_resource(
                     )
                     pending.remove(cand)
                     continue
+                inputs = {**policy.explain(cand, ctx), "waiting_after": waiting_after}
                 try:
                     ok = await booking_service.promote_locked(
-                        conn,
-                        res,
-                        row,
-                        now,
-                        policy.name,
-                        policy.version,
-                        policy.explain(cand, ctx),
+                        conn, res, row, now, policy.name, policy.version, inputs
                     )
                 except (
                     asyncpg.ExclusionViolationError
@@ -110,7 +110,7 @@ async def promote_for_resource(
                     log.error("exclusion violation while promoting %s", cand.id)
                     ok = False
                 if ok:
-                    winner = cand
+                    winner, winner_waiting = cand, waiting_after
                     break
                 pending.remove(
                     cand
@@ -123,4 +123,6 @@ async def promote_for_resource(
             promoted.append(winner.id)
             pending.remove(winner)
             recent[winner.user_id] = recent.get(winner.user_id, 0) + 1  # re-rank with the new usage
+            if winner_waiting >= k:
+                contended[winner.user_id] = contended.get(winner.user_id, 0) + 1
     return promoted
