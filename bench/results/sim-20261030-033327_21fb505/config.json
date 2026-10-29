@@ -1,0 +1,27 @@
+{
+  "users": [
+    50,
+    200,
+    1000
+  ],
+  "ratios": [
+    0.5,
+    1,
+    2,
+    4,
+    8
+  ],
+  "seeds": 5,
+  "rounds": 100,
+  "users_per_slot": 10,
+  "patience": 10,
+  "window": 14,
+  "contention_k": 2,
+  "weights": [
+    2.0,
+    4.0
+  ],
+  "heavy_peak": 0.0,
+  "quick": true,
+  "git_sha": "21fb505"
+}
