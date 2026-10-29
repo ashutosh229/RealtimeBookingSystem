@@ -138,6 +138,7 @@ async def _create_once(
             key=key,
             req_hash=h,
             confirmed_at=now if got else None,
+            created_at=now,
         )
         bid = row["booking_id"]
         await repo.add_history(
