@@ -1,0 +1,18 @@
+{
+  "all_passed": true,
+  "runs": 48,
+  "total_violations": 0,
+  "args": {
+    "levels": [20, 50, 100, 200],
+    "repeat": 3,
+    "seed": 42,
+    "keep": false,
+    "note": "laptop, docker compose, 1 API replica, 1 Postgres"
+  },
+  "note": "laptop, docker compose, 1 API replica, 1 Postgres",
+  "git_sha": "150da1e",
+  "python": "3.12.3",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "api": "http://localhost:8080/v1",
+  "start_slot": "2026-10-28T09:00:00+00:00"
+}
