@@ -15,12 +15,8 @@ HTTP = {"get", "post", "put", "patch", "delete"}
 
 # Documented in the contract but not built yet. Shrinks as phases land; a stale entry fails the test.
 NOT_YET = {
-    ("get", "/waitlists/{waitlist_id}"),
     ("get", "/users/me/notifications"),
     ("post", "/users/me/notifications/{notification_id}/read"),
-    ("get", "/admin/waitlists"),
-    ("get", "/admin/allocations"),
-    ("get", "/admin/metrics/summary"),
 }
 # Documented query params not built yet (geo search and availability filter arrive in Phase 6).
 PARAMS_NOT_YET = {
@@ -41,6 +37,9 @@ SCHEMA_PAIRS = {  # yaml schema -> pydantic model
     "BookingCreate": "BookingCreate",
     "Booking": "BookingDetail",
     "BookingPage": "BookingPage",
+    "WaitlistEntry": "WaitlistEntryOut",
+    "AllocationRecord": "AllocationRecordOut",
+    "MetricsSummary": "MetricsSummaryOut",
 }
 
 
