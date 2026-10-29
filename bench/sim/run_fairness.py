@@ -1,7 +1,7 @@
-"""E1: FIFO vs fair-share on identical traces.
+"""E1/E6: fairness policies on identical traces.
 
-    python bench/sim/run_fairness.py --quick            # 5 seeds, a minute
-    python bench/sim/run_fairness.py                    # full grid, 30 seeds
+    python bench/sim/run_fairness.py --quick
+    python bench/sim/run_fairness.py --heavy-peak 0.8          # heavy users concentrate at peak hours
 Output: bench/results/sim-<timestamp>_<git sha>/{runs.csv, summary.csv, config.json}
 """
 
@@ -16,18 +16,26 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
+from app.allocation.fair_share_q import FairShareQueuePolicy  # noqa: E402
 from app.allocation.metrics import mean_ci95  # noqa: E402
 from app.allocation.registry import POLICIES  # noqa: E402
-from app.allocation.simulator import SimConfig, generate_trace, simulate  # noqa: E402
+from app.allocation.simulator import (
+    SimConfig,
+    generate_trace,
+    heavy_set,
+    simulate,
+)  # noqa: E402
 
 KEYS = [
     "jain_alloc",
     "jain_satisfaction",
     "success_rate",
+    "zero_alloc_rate",
+    "heavy_share_alloc",
+    "heavy_share_req",
     "wait_mean",
     "wait_p95",
     "wait_max",
-    "starvation_rate",
     "utilization",
     "policy_ms",
 ]
@@ -44,6 +52,13 @@ def git_sha() -> str:
         return "nogit"
 
 
+def build_policies(weights: list[float]) -> dict:
+    pols = {n: POLICIES[n] for n in ("FIFO", "FAIR_SHARE")}
+    for w in weights:
+        pols[f"FAIR_SHARE_Q_w{w:g}"] = FairShareQueuePolicy(w)
+    return pols
+
+
 def main(a) -> None:
     out = (
         Path(__file__).resolve().parents[1]
@@ -51,7 +66,7 @@ def main(a) -> None:
         / f"sim-{time.strftime('%Y%m%d-%H%M%S')}_{git_sha()}"
     )
     out.mkdir(parents=True)
-    seeds = list(range(a.seeds))
+    policies = build_policies(a.weights)
     runs: list[dict] = []
     for users in a.users:
         capacity = max(1, users // a.users_per_slot)
@@ -60,13 +75,15 @@ def main(a) -> None:
             capacity=capacity,
             patience=a.patience,
             window_rounds=a.window,
+            contention_k=a.contention_k,
+            heavy_users=heavy_set(users),
         )
         for ratio in a.ratios:
-            for seed in seeds:
+            for seed in range(a.seeds):
                 trace = generate_trace(
-                    users, a.rounds, capacity, ratio, seed
-                )  # one trace, every policy
-                for name, policy in POLICIES.items():
+                    users, a.rounds, capacity, ratio, seed, heavy_peak=a.heavy_peak
+                )
+                for name, policy in policies.items():  # one trace, every policy
                     m = simulate(policy, trace, cfg).metrics
                     runs.append(
                         {
@@ -104,12 +121,13 @@ def main(a) -> None:
     )
 
     print(
-        f"\n{'users':>5} {'ratio':>5} {'policy':<11} {'jain':>13} {'jain_sat':>9} {'wait_p95':>8} {'starv':>6} {'util':>5}"
+        f"\n{'users':>5} {'ratio':>5} {'policy':<16} {'jain':>7} {'zero':>6} {'heavy%':>7} {'(req%)':>7} {'p95':>5}"
     )
     for r in rows:
         print(
-            f"{r['users']:>5} {r['ratio']:>5} {r['policy']:<11} {r['jain_alloc']:>7.3f}±{r['jain_alloc_ci95']:<5.3f}"
-            f" {r['jain_satisfaction']:>9.3f} {r['wait_p95']:>8.1f} {r['starvation_rate']:>6.2f} {r['utilization']:>5.2f}"
+            f"{r['users']:>5} {r['ratio']:>5} {r['policy']:<16} {r['jain_alloc']:>7.3f} "
+            f"{r['zero_alloc_rate']:>6.2f} {r['heavy_share_alloc']:>7.3f} {r['heavy_share_req']:>7.3f} "
+            f"{r['wait_p95']:>5.1f}"
         )
     print(f"\nresults in {out}")
 
@@ -128,6 +146,15 @@ if __name__ == "__main__":
     )
     p.add_argument("--patience", type=int, default=10)
     p.add_argument("--window", type=int, default=14)
+    p.add_argument("--contention-k", type=int, default=2)
+    p.add_argument(
+        "--weights",
+        type=float,
+        nargs="*",
+        default=[2.0, 4.0],
+        help="FAIR_SHARE_Q weights",
+    )
+    p.add_argument("--heavy-peak", type=float, default=0.0)
     p.add_argument("--quick", action="store_true")
     args = p.parse_args()
     if args.quick:

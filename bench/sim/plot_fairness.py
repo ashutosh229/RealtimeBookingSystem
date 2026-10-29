@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 PANELS = [
     ("jain_alloc", "Jain index (allocation counts)"),
     ("jain_satisfaction", "Jain index (served share of own requests)"),
+    ("zero_alloc_rate", "Share of users with zero allocations"),
+    ("heavy_share_alloc", "Heavy users' share of allocations"),
     ("wait_p95", "p95 wait (rounds, served requests)"),
     ("success_rate", "Success rate"),
 ]
