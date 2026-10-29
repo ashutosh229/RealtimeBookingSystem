@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     campus_tz: str = "UTC"
     fair_share_window_days: int = 14
     sweep_interval_seconds: int = 30
+    contention_min_waiting: int = 2
 
     @property
     def dsn(self) -> str:
