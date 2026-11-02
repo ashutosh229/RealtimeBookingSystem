@@ -78,6 +78,8 @@ async def recent_contended_counts(
         " WHERE a.decision_type = 'PROMOTE' AND b.user_id = ANY($1::uuid[])"
         " AND r.type = $2::resource_type AND b.confirmed_at >= $3"
         " AND COALESCE((a.inputs->>'waiting_after')::int, 0) >= $4"
+        " AND (b.status IN ('CONFIRMED','COMPLETED')"
+        "      OR (b.status = 'CANCELLED' AND b.start_time - b.cancelled_at < interval '1 hour'))"
         " GROUP BY b.user_id",
         user_ids,
         resource_type,
@@ -85,3 +87,19 @@ async def recent_contended_counts(
         min_waiting,
     )
     return {r["user_id"]: r["n"] for r in rows}
+
+
+async def users_with_recent_win(
+    conn: asyncpg.Connection, user_ids: list[UUID], resource_type: str, since: datetime
+) -> list[UUID]:
+    """Users allocated a slot of this resource type after `since` (same booking filter as recent_counts)."""
+    rows = await conn.fetch(
+        "SELECT DISTINCT b.user_id FROM bookings b JOIN resources r ON r.resource_id = b.resource_id"
+        " WHERE b.user_id = ANY($1::uuid[]) AND r.type = $2::resource_type AND b.confirmed_at > $3"
+        "   AND (b.status IN ('CONFIRMED','COMPLETED')"
+        "        OR (b.status = 'CANCELLED' AND b.start_time - b.cancelled_at < interval '1 hour'))",
+        user_ids,
+        resource_type,
+        since,
+    )
+    return [r["user_id"] for r in rows]
