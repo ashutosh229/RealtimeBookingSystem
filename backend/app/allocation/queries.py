@@ -32,7 +32,7 @@ def _dec(cursor: str):
 def entry_dict(row: asyncpg.Record) -> dict:
     d = dict(row)
     # Under FAIR_SHARE the real order changes with every promotion, so the arrival-order position is an estimate.
-    d["position_is_estimate"] = d["position"] is not None and d["policy_name"] == "FAIR_SHARE"
+    d["position_is_estimate"] = d["position"] is not None and d["policy_name"] != "FIFO"
     return d
 
 
