@@ -1,4 +1,4 @@
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -9,10 +9,17 @@ from app.allocation.fair_share_q import FairShareQueuePolicy
 from app.allocation.fifo import FifoPolicy
 from app.allocation.metrics import jain_index, mean_ci95, percentile
 from app.allocation.registry import POLICIES, policy_by_name
-from app.allocation.simulator import Request, SimConfig, generate_trace, heavy_set, simulate
+from app.allocation.simulator import (
+    Request,
+    SimConfig,
+    generate_trace,
+    heavy_set,
+    simulate,
+)
 
 T = datetime(2030, 1, 1, tzinfo=UTC)
 FIFO, FAIR = FifoPolicy(), FairSharePolicy()
+FQ = FairShareQueuePolicy(2.0)
 
 
 def cand(i, user, seq, minutes_ago=0):
@@ -275,3 +282,85 @@ def test_heavy_peak_concentrates_heavy_requests_and_default_is_unchanged():
         100, 100, 50, 4.0, seed=3, heavy_peak=0.0
     )
     assert len(peaked) == round(4.0 * 50 * 100)
+
+
+def reference_simulate(policy, requests, cfg):
+    """Brute force: full re-rank of the whole eligible queue before every single pick."""
+    by_round = defaultdict(list)
+    for r in requests:
+        by_round[r.round].append(r)
+    queue, arrival = [], {}
+    hist, cont, last = defaultdict(list), defaultdict(list), {}
+    allocated, contended, waits, seq = Counter(), Counter(), [], 0
+    for rnd in range(cfg.rounds):
+        now = T + timedelta(days=rnd)
+        for r in by_round.get(rnd, []):
+            seq += 1
+            arrival[seq] = rnd
+            queue.append(Candidate(id=seq, user_id=r.user, seq=seq, created_at=now))
+        queue = [c for c in queue if rnd - arrival[c.id] <= cfg.patience]
+        for _ in range(cfg.capacity):
+            elig = [
+                c
+                for c in queue
+                if not (cfg.min_gap and c.user_id in last and rnd - last[c.user_id] < cfg.min_gap)
+            ]
+            if not elig:
+                break
+            users = {c.user_id for c in elig}
+            recent = {u: sum(1 for x in hist[u] if x > rnd - cfg.window_rounds) for u in users}
+            rc = {u: sum(1 for x in cont[u] if x > rnd - cfg.window_rounds) for u in users}
+            c_ = AllocationContext(
+                now=now,
+                recent_allocations=recent,
+                window_days=cfg.window_rounds,
+                recent_contended=rc,
+            )
+            best = policy.rank(elig, c_)[0]
+            allocated[best.user_id] += 1
+            hist[best.user_id].append(rnd)
+            if len(elig) - 1 >= cfg.contention_k:
+                contended[best.user_id] += 1
+                cont[best.user_id].append(rnd)
+            last[best.user_id] = rnd
+            waits.append(rnd - arrival[best.id])
+            queue = [c for c in queue if c.id != best.id]
+    return allocated, waits, contended
+
+
+@pytest.mark.parametrize("policy", [FIFO, FAIR, FQ])
+@pytest.mark.parametrize("min_gap", [0, 2])
+@pytest.mark.parametrize("k", [1, 2])
+@pytest.mark.parametrize("seed", [1, 2])
+def test_fast_simulator_equals_brute_force(policy, min_gap, k, seed):
+    cfg = SimConfig(
+        rounds=30,
+        capacity=3,
+        patience=4,
+        window_rounds=10,
+        min_gap=min_gap,
+        contention_k=k,
+    )
+    trace = generate_trace(30, 30, 3, 3.0, seed=seed, heavy_peak=0.8)
+    res = simulate(policy, trace, cfg)
+    allocated, waits, contended = reference_simulate(policy, trace, cfg)
+    assert res.allocated == allocated and res.waits == waits and res.contended == contended
+
+
+def test_one_user_cannot_take_several_seats_in_one_round_under_fair_share():
+    trace = flood({0: 3, 1: 1})  # user 0 queued first and three times; two seats this round
+    cfg = SimConfig(rounds=1, capacity=2, patience=100, window_rounds=100)
+    assert simulate(FIFO, trace, cfg).allocated == Counter({0: 2})
+    assert simulate(FAIR, trace, cfg).allocated == Counter({0: 1, 1: 1})
+
+
+def test_min_gap_spaces_a_users_wins():
+    trace = flood({0: 4, 1: 1})
+    cfg = SimConfig(rounds=3, capacity=2, patience=100, window_rounds=100, min_gap=2)
+    res = simulate(FIFO, trace, cfg)
+    assert res.alloc_per_round == [
+        2,
+        0,
+        1,
+    ]  # round 1: user 0 is cooling, nobody else is queued
+    assert res.allocated == Counter({0: 2, 1: 1})
