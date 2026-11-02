@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     fair_share_window_days: int = 14
     sweep_interval_seconds: int = 30
     contention_min_waiting: int = 2
+    promotion_min_gap_minutes: int = 0
 
     @property
     def dsn(self) -> str:
