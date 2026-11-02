@@ -75,7 +75,7 @@ def main(a) -> None:
             capacity=capacity,
             patience=a.patience,
             window_rounds=a.window,
-            contention_k=a.contention_k,
+            min_gap=a.min_gap,
             heavy_users=heavy_set(users),
         )
         for ratio in a.ratios:
@@ -138,6 +138,9 @@ if __name__ == "__main__":
     p.add_argument("--ratios", type=float, nargs="+", default=[0.5, 1, 2, 4, 8])
     p.add_argument("--seeds", type=int, default=30)
     p.add_argument("--rounds", type=int, default=100)
+    p.add_argument(
+        "--min-gap", type=int, default=0, help="rounds between a user's wins (0 = off)"
+    )
     p.add_argument(
         "--users-per-slot",
         type=int,
