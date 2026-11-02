@@ -31,6 +31,7 @@ class SimConfig:
     window_rounds: int = 14  # rolling window for "recent allocations"
     contention_k: int = 2  # a win is contended if >= k other requests were still waiting after it
     heavy_users: frozenset[int] = frozenset()  # for the heavy-share metrics only
+    min_gap: int = 0  # a user may win at most once per `min_gap` rounds (0 = off)
 
 
 @dataclass
@@ -44,6 +45,10 @@ class SimResult:
     policy_seconds: float = 0.0
     metrics: dict = field(default_factory=dict)
     contended: Counter = field(default_factory=Counter)
+
+
+def _cooling(last_win: dict[int, int], user: int, rnd: int, min_gap: int) -> bool:
+    return min_gap > 0 and user in last_win and rnd - last_win[user] < min_gap
 
 
 def heavy_set(users: int, heavy_frac: float = 0.2) -> frozenset[int]:
@@ -102,18 +107,33 @@ def _window_count(hist: dict[int, deque[int]], user: int, rnd: int, window: int)
 
 
 def simulate(policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConfig) -> SimResult:
+    """One round = arrivals, expiry, then up to `capacity` picks, re-ranking after every pick.
+
+    After a pick only the winner's usage changes, so only the winner's remaining requests are
+    re-ranked; everyone else keeps the order from the round's first ranking. This equals a full
+    re-rank per pick for any policy whose key for a request depends only on that request and its
+    user's usage (a brute-force test checks it).
+    """
     by_round: dict[int, list[Request]] = defaultdict(list)
     for r in requests:
         by_round[r.round].append(r)
 
     queue: list[Candidate] = []
     arrival: dict[int, int] = {}
-    history: dict[int, deque[int]] = defaultdict(deque)  # user -> rounds of past allocations
-    contended_hist: dict[int, deque[int]] = defaultdict(deque)  # user -> rounds of contended wins
+    history: dict[int, deque[int]] = defaultdict(deque)
+    contended_hist: dict[int, deque[int]] = defaultdict(deque)
+    last_win: dict[int, int] = {}
     requested, allocated, contended = Counter(), Counter(), Counter()
     waits: list[int] = []
     per_round: list[int] = []
     policy_seconds, seq = 0.0, 0
+
+    def timed_rank(cands: list[Candidate], ctx: AllocationContext) -> list[Candidate]:
+        nonlocal policy_seconds
+        t0 = time.perf_counter()
+        out = policy.rank(cands, ctx)
+        policy_seconds += time.perf_counter() - t0
+        return out
 
     for rnd in range(cfg.rounds):
         now = _EPOCH + timedelta(days=rnd)
@@ -122,33 +142,67 @@ def simulate(policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConf
             arrival[seq] = rnd
             requested[r.user] += 1
             queue.append(Candidate(id=seq, user_id=r.user, seq=seq, created_at=now))
-
         queue = [c for c in queue if rnd - arrival[c.id] <= cfg.patience]  # expire
-        users_now = {c.user_id for c in queue}
-        recent = {u: _window_count(history, u, rnd, cfg.window_rounds) for u in users_now}
-        recent_c = {u: _window_count(contended_hist, u, rnd, cfg.window_rounds) for u in users_now}
 
+        eligible = [c for c in queue if not _cooling(last_win, c.user_id, rnd, cfg.min_gap)]
+        per_user: dict[int, list[Candidate]] = defaultdict(list)
+        for c in eligible:
+            per_user[c.user_id].append(c)
+        recent = {u: _window_count(history, u, rnd, cfg.window_rounds) for u in per_user}
+        recent_c = {u: _window_count(contended_hist, u, rnd, cfg.window_rounds) for u in per_user}
         ctx = AllocationContext(
             now=now,
             recent_allocations=recent,
             window_days=cfg.window_rounds,
             recent_contended=recent_c,
         )
-        t0 = time.perf_counter()
-        ranked = policy.rank(queue, ctx)
-        policy_seconds += time.perf_counter() - t0
 
-        chosen = ranked[: cfg.capacity]
-        taken = {c.id for c in chosen}
-        for i, c in enumerate(chosen):
-            allocated[c.user_id] += 1
-            history[c.user_id].append(rnd)
-            waits.append(rnd - arrival[c.id])
-            if len(ranked) - i - 1 >= cfg.contention_k:  # others were still waiting after this win
-                contended[c.user_id] += 1
-                contended_hist[c.user_id].append(rnd)
+        main = deque(timed_rank(eligible, ctx))
+        taken: set[int] = set()
+        won: set[int] = set()
+        rest_of: dict[int, list[Candidate]] = {}  # users who already won this round
+        best_of: dict[int, Candidate] = {}  # their current best remaining request
+        waiting = len(eligible)
+        chosen = 0
+        while chosen < cfg.capacity and waiting > 0:
+            while main and (main[0].id in taken or main[0].user_id in won):
+                main.popleft()
+            contenders = ([main[0]] if main else []) + list(best_of.values())
+            if not contenders:
+                break
+            best = contenders[0] if len(contenders) == 1 else timed_rank(contenders, ctx)[0]
+
+            u = best.user_id
+            waiting -= 1  # eligible requests still waiting after this win
+            chosen += 1
+            taken.add(best.id)
+            won.add(u)
+            allocated[u] += 1
+            history[u].append(rnd)
+            waits.append(rnd - arrival[best.id])
+            recent[u] = recent.get(u, 0) + 1
+            if waiting >= cfg.contention_k:
+                contended[u] += 1
+                contended_hist[u].append(rnd)
+                recent_c[u] = recent_c.get(u, 0) + 1
+            last_win[u] = rnd
+
+            rest = [c for c in rest_of.get(u, per_user[u]) if c.id != best.id]
+            if (
+                cfg.min_gap > 0
+            ):  # the winner is now cooling: its other requests cannot win this round
+                waiting -= len(rest)
+                rest_of[u] = []
+                best_of.pop(u, None)
+            else:
+                rest_of[u] = rest
+                if rest:
+                    best_of[u] = timed_rank(rest, ctx)[0]  # re-rank with the winner's new usage
+                else:
+                    best_of.pop(u, None)
+
         queue = [c for c in queue if c.id not in taken]
-        per_round.append(len(chosen))
+        per_round.append(chosen)
 
     res = SimResult(
         len(requests),
