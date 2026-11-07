@@ -1,0 +1,20 @@
+{
+  "users": 200,
+  "ratio": 4.0,
+  "seeds": 20,
+  "rounds": 100,
+  "users_per_slot": 10,
+  "patience": 10,
+  "window": 28,
+  "heavy_peak": 0.8,
+  "cancel_p": [
+    0.5
+  ],
+  "sybil_k": [
+    2,
+    4,
+    8
+  ],
+  "quick": false,
+  "git_sha": "578c780"
+}
