@@ -62,6 +62,7 @@ async def promote_for_resource(
         user_ids = list({r["user_id"] for r in rows})
         recent = await alloc_repo.recent_counts(conn, user_ids, res["type"], since)
         contended = await alloc_repo.recent_contended_counts(conn, user_ids, res["type"], since, k)
+        ages = await alloc_repo.win_ages(conn, user_ids, res["type"], since, now)
         cooling: set[UUID] = set()
         if gap:
             cooling = set(
@@ -74,6 +75,7 @@ async def promote_for_resource(
                 recent_allocations=dict(recent),
                 window_days=window,
                 recent_contended=dict(contended),
+                win_ages={u: list(a) for u, a in ages.items()},
             )
 
         by_id = {r["booking_id"]: r for r in rows}
@@ -132,6 +134,7 @@ async def promote_for_resource(
             promoted.append(winner.id)
             pending.remove(winner)
             recent[winner.user_id] = recent.get(winner.user_id, 0) + 1  # re-rank with new usage
+            ages.setdefault(winner.user_id, []).append(0.0)
             if waiting_after >= k:
                 contended[winner.user_id] = contended.get(winner.user_id, 0) + 1
             if gap:  # the winner now cools down: its other requests leave this pass
