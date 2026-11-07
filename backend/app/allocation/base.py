@@ -23,6 +23,9 @@ class AllocationContext:
     recent_contended: Mapping[Hashable, int] = field(
         default_factory=dict
     )  # of those, won under contention
+    win_ages: Mapping[Hashable, Sequence[float]] = field(
+        default_factory=dict
+    )  # user -> ages (in days) of wins inside the window, for decayed usage
 
 
 class AllocationPolicy(Protocol):

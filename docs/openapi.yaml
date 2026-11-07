@@ -633,7 +633,8 @@ components:
     BookingStatus:
       type: string
       enum: [REQUESTED, CONFIRMED, WAITLISTED, CANCELLED, COMPLETED, EXPIRED]
-    Policy: { type: string, enum: [FIFO, FAIR_SHARE, FAIR_SHARE_Q] }
+    Policy:
+      { type: string, enum: [FIFO, FAIR_SHARE, FAIR_SHARE_Q, FAIR_SHARE_D] }
 
     Resource:
       type: object

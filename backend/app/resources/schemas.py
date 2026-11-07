@@ -5,7 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, field_serializer
 
 ResourceType = Literal["SEAT", "ROOM", "COMPUTE_POOL"]
-PolicyName = Literal["FIFO", "FAIR_SHARE", "FAIR_SHARE_Q"]
+PolicyName = Literal["FIFO", "FAIR_SHARE", "FAIR_SHARE_Q", "FAIR_SHARE_D"]
 SlotMinutes = Literal[15, 30, 60, 120]
 
 
