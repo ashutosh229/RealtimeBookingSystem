@@ -7,7 +7,7 @@ and the top `capacity` requests are served. The same trace can be replayed under
 import random
 import time
 from collections import Counter, defaultdict, deque
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -28,10 +28,14 @@ class SimConfig:
     rounds: int
     capacity: int  # units served per round
     patience: int = 10  # a request may wait this many rounds after arrival, then expires
-    window_rounds: int = 14  # rolling window for "recent allocations"
+    window_rounds: int = 14  # rolling window for "recent allocations" (1 round = 1 day)
     contention_k: int = 2  # a win is contended if >= k other requests were still waiting after it
     heavy_users: frozenset[int] = frozenset()  # for the heavy-share metrics only
     min_gap: int = 0  # a user may win at most once per `min_gap` rounds (0 = off)
+    gamers: frozenset[int] = frozenset()  # accounts that cancel-hoard (B4)
+    gamer_cancel_p: float = 0.0  # probability a gamer cancels a win, too late to re-offer the seat
+    cancel_counts: bool = True  # True: a late-cancelled win still counts toward usage (the penalty)
+    cancel_seed: int = 0
 
 
 @dataclass
@@ -45,6 +49,7 @@ class SimResult:
     policy_seconds: float = 0.0
     metrics: dict = field(default_factory=dict)
     contended: Counter = field(default_factory=Counter)
+    wasted: int = 0  # seats won and cancelled too late to be re-offered
 
 
 def _cooling(last_win: dict[int, int], user: int, rnd: int, min_gap: int) -> bool:
@@ -99,6 +104,29 @@ def generate_trace(
     return reqs
 
 
+def with_sybils(
+    requests: Sequence[Request],
+    owners: Iterable[int],
+    k: int,
+    first_new_id: int,
+    seed: int,
+) -> tuple[list[Request], frozenset[int]]:
+    """Spread each owner's requests over k accounts: the owner's own id plus k-1 new ones.
+    Returns the new trace and the set of all accounts belonging to the owners."""
+    owners = sorted(set(owners))
+    if k <= 1 or not owners:
+        return list(requests), frozenset(owners)
+    rng = random.Random(seed)
+    alias = {
+        o: [o] + [first_new_id + i * (k - 1) + j for j in range(k - 1)]
+        for i, o in enumerate(owners)
+    }
+    out = [
+        Request(r.round, rng.choice(alias[r.user]) if r.user in alias else r.user) for r in requests
+    ]
+    return out, frozenset(a for ids in alias.values() for a in ids)
+
+
 def _window_count(hist: dict[int, deque[int]], user: int, rnd: int, window: int) -> int:
     dq = hist[user]
     while dq and dq[0] <= rnd - window:
@@ -126,7 +154,10 @@ def simulate(policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConf
     requested, allocated, contended = Counter(), Counter(), Counter()
     waits: list[int] = []
     per_round: list[int] = []
-    policy_seconds, seq = 0.0, 0
+    policy_seconds, seq, wasted = 0.0, 0, 0
+    gamer_rng = random.Random(
+        cfg.cancel_seed
+    )  # drawn only for gamers, so the default path is untouched
 
     def timed_rank(cands: list[Candidate], ctx: AllocationContext) -> list[Candidate]:
         nonlocal policy_seconds
@@ -150,11 +181,13 @@ def simulate(policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConf
             per_user[c.user_id].append(c)
         recent = {u: _window_count(history, u, rnd, cfg.window_rounds) for u in per_user}
         recent_c = {u: _window_count(contended_hist, u, rnd, cfg.window_rounds) for u in per_user}
+        ages = {u: [float(rnd - x) for x in history[u]] for u in per_user}
         ctx = AllocationContext(
             now=now,
             recent_allocations=recent,
             window_days=cfg.window_rounds,
             recent_contended=recent_c,
+            win_ages=ages,
         )
 
         main = deque(timed_rank(eligible, ctx))
@@ -177,20 +210,31 @@ def simulate(policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConf
             chosen += 1
             taken.add(best.id)
             won.add(u)
-            allocated[u] += 1
-            history[u].append(rnd)
-            waits.append(rnd - arrival[best.id])
-            recent[u] = recent.get(u, 0) + 1
-            if waiting >= cfg.contention_k:
-                contended[u] += 1
-                contended_hist[u].append(rnd)
-                recent_c[u] = recent_c.get(u, 0) + 1
-            last_win[u] = rnd
+            cancelled = (
+                u in cfg.gamers
+                and cfg.gamer_cancel_p > 0
+                and gamer_rng.random() < cfg.gamer_cancel_p
+            )
+            counted = (not cancelled) or cfg.cancel_counts
+            if cancelled:
+                wasted += 1  # the seat is lost for this round
+            else:
+                allocated[u] += 1
+                waits.append(rnd - arrival[best.id])
+            if counted:
+                history[u].append(rnd)
+                recent[u] = recent.get(u, 0) + 1
+                ages.setdefault(u, []).append(0.0)
+                last_win[u] = rnd
+                if waiting >= cfg.contention_k:
+                    contended[u] += 1
+                    contended_hist[u].append(rnd)
+                    recent_c[u] = recent_c.get(u, 0) + 1
 
             rest = [c for c in rest_of.get(u, per_user[u]) if c.id != best.id]
             if (
-                cfg.min_gap > 0
-            ):  # the winner is now cooling: its other requests cannot win this round
+                cfg.min_gap > 0 and counted
+            ):  # the winner is cooling: its other requests cannot win now
                 waiting -= len(rest)
                 rest_of[u] = []
                 best_of.pop(u, None)
@@ -213,6 +257,7 @@ def simulate(policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConf
         cfg,
         policy_seconds,
         contended=contended,
+        wasted=wasted,
     )
     res.metrics = summarize(res)
     return res
@@ -223,9 +268,11 @@ def summarize(res: SimResult) -> dict:
     total_req = sum(res.requested.values())
     users = list(res.requested)  # only users who asked at least once
     capacity_total = res.config.capacity * res.config.rounds
-    heavy = res.config.heavy_users
+    heavy, gamers = res.config.heavy_users, res.config.gamers
     heavy_req = sum(n for u, n in res.requested.items() if u in heavy)
     heavy_alloc = sum(n for u, n in res.allocated.items() if u in heavy)
+    gamer_alloc = sum(n for u, n in res.allocated.items() if u in gamers)
+    honest_req = sum(n for u, n in res.requested.items() if u not in gamers)
     return {
         "allocated": total_alloc,
         "success_rate": total_alloc / res.total_requests if res.total_requests else 1.0,
@@ -238,6 +285,9 @@ def summarize(res: SimResult) -> dict:
         ),
         "heavy_share_req": heavy_req / total_req if total_req else 0.0,
         "heavy_share_alloc": heavy_alloc / total_alloc if total_alloc else 0.0,
+        "wasted_rate": res.wasted / capacity_total if capacity_total else 0.0,
+        "gamer_share_alloc": gamer_alloc / total_alloc if total_alloc else 0.0,
+        "honest_success_rate": ((total_alloc - gamer_alloc) / honest_req if honest_req else 1.0),
         "wait_mean": sum(res.waits) / len(res.waits) if res.waits else 0.0,
         "wait_p95": percentile(res.waits, 95),
         "wait_max": max(res.waits, default=0),
