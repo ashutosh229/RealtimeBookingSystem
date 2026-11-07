@@ -103,3 +103,28 @@ async def users_with_recent_win(
         since,
     )
     return [r["user_id"] for r in rows]
+
+
+async def win_ages(
+    conn: asyncpg.Connection,
+    user_ids: list[UUID],
+    resource_type: str,
+    since: datetime,
+    now: datetime,
+) -> dict[UUID, list[float]]:
+    """Ages in days of each user's wins inside the window (same booking filter as recent_counts)."""
+    rows = await conn.fetch(
+        "SELECT b.user_id,"
+        " array_agg((EXTRACT(EPOCH FROM ($4::timestamptz - b.confirmed_at)) / 86400.0)::float8"
+        "           ORDER BY b.confirmed_at) AS ages"
+        " FROM bookings b JOIN resources r ON r.resource_id = b.resource_id"
+        " WHERE b.user_id = ANY($1::uuid[]) AND r.type = $2::resource_type AND b.confirmed_at >= $3"
+        "   AND (b.status IN ('CONFIRMED','COMPLETED')"
+        "        OR (b.status = 'CANCELLED' AND b.start_time - b.cancelled_at < interval '1 hour'))"
+        " GROUP BY b.user_id",
+        user_ids,
+        resource_type,
+        since,
+        now,
+    )
+    return {r["user_id"]: [float(a) for a in r["ages"]] for r in rows}
