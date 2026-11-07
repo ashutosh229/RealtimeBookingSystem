@@ -5,6 +5,7 @@ import pytest
 
 from app.allocation.base import AllocationContext, Candidate
 from app.allocation.fair_share import FairSharePolicy
+from app.allocation.fair_share_decay import FairShareDecayPolicy
 from app.allocation.fair_share_q import FairShareQueuePolicy
 from app.allocation.fifo import FifoPolicy
 from app.allocation.metrics import jain_index, mean_ci95, percentile
@@ -20,6 +21,7 @@ from app.allocation.simulator import (
 T = datetime(2030, 1, 1, tzinfo=UTC)
 FIFO, FAIR = FifoPolicy(), FairSharePolicy()
 FQ = FairShareQueuePolicy(2.0)
+FD = FairShareDecayPolicy(7.0)
 
 
 def cand(i, user, seq, minutes_ago=0):
@@ -85,7 +87,7 @@ def test_explain_has_the_decision_inputs():
 
 
 def test_registry():
-    assert set(POLICIES) == {"FIFO", "FAIR_SHARE", "FAIR_SHARE_Q"}
+    assert set(POLICIES) == {"FIFO", "FAIR_SHARE", "FAIR_SHARE_Q", "FAIR_SHARE_D"}
     assert policy_by_name("FAIR_SHARE").version == "1.0"
     with pytest.raises(ValueError):
         policy_by_name("LOTTERY")
@@ -315,6 +317,10 @@ def reference_simulate(policy, requests, cfg):
                 recent_allocations=recent,
                 window_days=cfg.window_rounds,
                 recent_contended=rc,
+                win_ages={
+                    u: [float(rnd - x) for x in hist[u] if x > rnd - cfg.window_rounds]
+                    for u in users
+                },
             )
             best = policy.rank(elig, c_)[0]
             allocated[best.user_id] += 1
@@ -328,7 +334,7 @@ def reference_simulate(policy, requests, cfg):
     return allocated, waits, contended
 
 
-@pytest.mark.parametrize("policy", [FIFO, FAIR, FQ])
+@pytest.mark.parametrize("policy", [FIFO, FAIR, FQ, FD])
 @pytest.mark.parametrize("min_gap", [0, 2])
 @pytest.mark.parametrize("k", [1, 2])
 @pytest.mark.parametrize("seed", [1, 2])
