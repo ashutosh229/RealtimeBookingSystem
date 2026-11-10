@@ -23,11 +23,7 @@ def histogram(chances: list[float]) -> list[int]:
 
 
 async def summary(
-    conn: asyncpg.Connection,
-    *,
-    resource_id: UUID | None,
-    window_days: int,
-    now: datetime
+    conn: asyncpg.Connection, *, resource_id: UUID | None, window_days: int, now: datetime
 ) -> dict:
     rows = await conn.fetch(_SQL, now - timedelta(days=window_days), now, resource_id)
     chances = [r["got"] / r["attempts"] for r in rows]
