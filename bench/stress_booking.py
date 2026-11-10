@@ -185,6 +185,10 @@ async def judge(pool, name, n, rep, rid, out, wall, expected) -> dict:
         uuid.UUID(rid),
     )
     violations = await pool.fetchval(INVARIANT_SQL, uuid.UUID(rid))
+    attempts_db = await pool.fetchval(
+        "SELECT count(*) FROM booking_attempts WHERE resource_id = $1", uuid.UUID(rid)
+    )
+    expected_attempts = 1 if name == "idempotent_storm" else len(out)
     if name == "idempotent_storm":
         ids = {d.get("booking_id") for s, _, d in out if s == 201}
         confirmed_http = len(ids)
@@ -193,6 +197,7 @@ async def judge(pool, name, n, rep, rid, out, wall, expected) -> dict:
             and len(ids) == 1
             and confirmed_db == 1
             and violations == 0
+            and attempts_db == expected_attempts
         )
     else:
         confirmed_http = statuses.get(201, 0)
@@ -201,6 +206,7 @@ async def judge(pool, name, n, rep, rid, out, wall, expected) -> dict:
             and set(statuses) <= {201, 409}
             and confirmed_db == confirmed_http
             and (expected is None or confirmed_db == expected)
+            and attempts_db == expected_attempts
         )
     return {
         "scenario": name,
@@ -217,6 +223,7 @@ async def judge(pool, name, n, rep, rid, out, wall, expected) -> dict:
         "wall_s": round(wall, 2),
         "req_per_s": round(len(out) / wall, 1),
         "violations": violations,
+        "attempts_db": attempts_db,
         "passed": ok,
     }
 
