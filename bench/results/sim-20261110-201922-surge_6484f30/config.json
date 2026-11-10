@@ -1,0 +1,23 @@
+{
+  "users": 200,
+  "ratio": 2.0,
+  "seeds": 20,
+  "rounds": 100,
+  "users_per_slot": 10,
+  "patience": 10,
+  "window": 28,
+  "heavy_peak": 0.0,
+  "surge_frac": 0.0,
+  "surge_start": 40,
+  "surge_len": 3,
+  "rate": 0.3,
+  "burst": 3.0,
+  "retries": 3,
+  "queue_cap": 5.0,
+  "income": 0.3,
+  "credit_cap": 6.0,
+  "surge_k": 1.0,
+  "max_price": 4.0,
+  "quick": false,
+  "git_sha": "6484f30"
+}
