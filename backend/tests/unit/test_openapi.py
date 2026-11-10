@@ -5,9 +5,7 @@ import yaml
 from openapi_spec_validator import validate
 
 SPEC = Path(__file__).resolve().parents[3] / "docs" / "openapi.yaml"
-pytestmark = pytest.mark.skipif(
-    not SPEC.exists(), reason="docs/openapi.yaml not present"
-)
+pytestmark = pytest.mark.skipif(not SPEC.exists(), reason="docs/openapi.yaml not present")
 
 
 def load() -> dict:
