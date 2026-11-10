@@ -200,3 +200,18 @@ async def test_end_must_be_after_start(conn):
         False,
         "key-00000009",
     )
+
+
+async def test_attempt_outcome_must_be_known(conn):
+    u = await make_user(conn)
+    await expect_error(
+        conn,
+        pgx.CheckViolationError,
+        "INSERT INTO booking_attempts (user_id, resource_id, start_time, end_time, quantity,"
+        " waitlist_requested, outcome, http_status, user_group, created_at)"
+        " VALUES ($1, $2, $3, $4, 1, false, 'MAYBE', 200, 'general', now())",
+        u,
+        uuid.uuid4(),
+        hour(0),
+        hour(1),
+    )
