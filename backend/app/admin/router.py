@@ -1,10 +1,12 @@
+from typing import Literal
 from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, Query
 from pydantic import AwareDatetime
 
-from app.admin import metrics
+from app.admin import attempts, metrics
+from app.admin.schemas import AttemptPage, RejectionSummaryOut
 from app.allocation import queries
 from app.allocation.schemas import AllocationPage, MetricsSummaryOut, WaitlistPage
 from app.booking import service as booking_service
@@ -64,5 +66,46 @@ async def admin_metrics(
     conn: asyncpg.Connection = Depends(get_conn),
 ):
     return await metrics.summary(
+        conn, resource_id=resource_id, window_days=window_days, now=clock.now()
+    )
+
+
+@router.get("/attempts", response_model=AttemptPage, dependencies=[Depends(require_admin)])
+async def admin_attempts(
+    outcome: Literal["CONFIRMED", "WAITLISTED", "REJECTED"] | None = None,
+    reason: str | None = Query(None, max_length=64),
+    resource_id: UUID | None = None,
+    user_id: UUID | None = None,
+    from_: AwareDatetime | None = Query(None, alias="from"),
+    to: AwareDatetime | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    cursor: str | None = None,
+    conn: asyncpg.Connection = Depends(get_conn),
+):
+    rows, nxt = await attempts.list_attempts(
+        conn,
+        outcome=outcome,
+        reason=reason,
+        resource_id=resource_id,
+        user_id=user_id,
+        frm=from_,
+        to=to,
+        limit=limit,
+        cursor=cursor,
+    )
+    return {"items": [dict(r) for r in rows], "next_cursor": nxt}
+
+
+@router.get(
+    "/metrics/rejections",
+    response_model=RejectionSummaryOut,
+    dependencies=[Depends(require_admin)],
+)
+async def admin_rejection_summary(
+    resource_id: UUID | None = None,
+    window_days: int = Query(14, ge=1, le=90),
+    conn: asyncpg.Connection = Depends(get_conn),
+):
+    return await attempts.rejection_summary(
         conn, resource_id=resource_id, window_days=window_days, now=clock.now()
     )
