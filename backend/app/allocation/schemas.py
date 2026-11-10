@@ -49,3 +49,33 @@ class MetricsSummaryOut(BaseModel):
     jain_index: float
     waitlist_length: int
     wait_seconds: WaitSeconds
+
+
+class ChanceGroup(BaseModel):
+    user_group: str
+    users: int
+    mean_chance: float
+
+
+class ChanceSummaryOut(BaseModel):
+    window_days: int
+    users: int
+    attempts: int
+    chance_mean: float
+    chance_min: float
+    chance_p10: float
+    chance_median: float
+    chance_gini: float
+    chance_low_share: float
+    by_group: list[ChanceGroup]
+    histogram: list[int]
+
+
+class MyChanceOut(BaseModel):
+    window_days: int
+    attempts: int
+    successes: int
+    my_chance: float | None = None
+    cohort_users: int
+    cohort_median: float | None = None
+    cohort_mean: float | None = None
