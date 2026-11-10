@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import logging
 import random
 from dataclasses import dataclass
 from datetime import UTC, timedelta
@@ -28,6 +29,11 @@ from app.resources.slots import booking_slots
 POLICY_VERSION = "1.0"
 MAX_ATTEMPTS = 3
 
+log = logging.getLogger("rtbs.booking")
+_NOT_AN_ATTEMPT = {
+    "IDEMPOTENCY_KEY_REUSED"
+}  # a client mistake about the key, not a booking attempt
+
 
 @dataclass
 class Result:
@@ -52,23 +58,46 @@ async def create_booking(
     conn: asyncpg.Connection, user: dict, cmd: BookingCreate, key: str
 ) -> Result:
     h = request_hash(cmd)
-    for attempt in range(MAX_ATTEMPTS):
-        try:
-            return await _create_once(conn, user, cmd, key, h)
-        except asyncpg.DeadlockDetectedError:
-            await asyncio.sleep(random.uniform(0, 0.02 * (attempt + 1)))
-        except (
-            asyncpg.ExclusionViolationError
-        ):  # Class A backstop: the ledger should have refused first
-            raise ApiError(
-                409, "CAPACITY_UNAVAILABLE", "No capacity for the requested time"
-            ) from None
-    raise ApiError(
-        503,
-        "SERVICE_BUSY",
-        "Busy, retry with the same Idempotency-Key",
-        headers={"Retry-After": "1"},
-    )
+    try:
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                return await _create_once(conn, user, cmd, key, h)
+            except asyncpg.DeadlockDetectedError:
+                await asyncio.sleep(random.uniform(0, 0.02 * (attempt + 1)))
+            except (
+                asyncpg.ExclusionViolationError
+            ):  # Class A backstop: the ledger should refuse first
+                raise ApiError(
+                    409, "CAPACITY_UNAVAILABLE", "No capacity for the requested time"
+                ) from None
+        raise ApiError(
+            503,
+            "SERVICE_BUSY",
+            "Busy, retry with the same Idempotency-Key",
+            headers={"Retry-After": "1"},
+        )
+    except ApiError as e:
+        await _log_rejection(conn, user, cmd, e)  # the transaction has rolled back; log on its own
+        raise
+
+
+async def _log_rejection(conn: asyncpg.Connection, user: dict, cmd: BookingCreate, e: ApiError):
+    if e.code in _NOT_AN_ATTEMPT:
+        return
+    try:
+        await repo.add_attempt(
+            conn,
+            user=user,
+            cmd=cmd,
+            outcome="REJECTED",
+            reason=e.code,
+            detail=e.message[:200],
+            http_status=e.status,
+            booking_id=None,
+            now=clock.now(),
+        )
+    except Exception:  # never let the log hide the real error
+        log.exception("could not record the rejected attempt")
 
 
 async def _create_once(
@@ -121,6 +150,17 @@ async def _create_once(
                     "details": {},
                 }
             }
+            await repo.add_attempt(
+                conn,
+                user=user,
+                cmd=cmd,
+                outcome="REJECTED",
+                reason="CAPACITY_UNAVAILABLE",
+                detail="queue_exists" if queued else "full",
+                http_status=409,
+                booking_id=None,
+                now=now,
+            )
             await idem.complete(conn, uid, key, 409, body, None)
             return Result(409, body)
 
@@ -143,6 +183,17 @@ async def _create_once(
         bid = row["booking_id"]
         await repo.add_history(
             conn, bid, BookingStatus.REQUESTED.value, status.value, uid, "created"
+        )
+        await repo.add_attempt(
+            conn,
+            user=user,
+            cmd=cmd,
+            outcome=status.value,
+            reason=None,
+            detail=None if got else ("queue_exists" if queued else "full"),
+            http_status=201 if got else 202,
+            booking_id=bid,
+            now=now,
         )
 
         wl, position = None, None
