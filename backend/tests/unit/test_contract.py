@@ -40,6 +40,8 @@ SCHEMA_PAIRS = {  # yaml schema -> pydantic model
     "WaitlistEntry": "WaitlistEntryOut",
     "AllocationRecord": "AllocationRecordOut",
     "MetricsSummary": "MetricsSummaryOut",
+    "AttemptRecord": "AttemptOut",
+    "RejectionSummary": "RejectionSummaryOut",
 }
 
 
