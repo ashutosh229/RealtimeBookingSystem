@@ -1,0 +1,18 @@
+{
+  "users": 200,
+  "ratio": 2.0,
+  "seeds": 30,
+  "rounds": 100,
+  "users_per_slot": 10,
+  "patience": 10,
+  "window": 28,
+  "timely": 3,
+  "rate": 0.3,
+  "burst": 3.0,
+  "retries": 3,
+  "income": 0.3,
+  "credit_cap": 6.0,
+  "no_plots": false,
+  "quick": false,
+  "git_sha": "87d7f37"
+}
