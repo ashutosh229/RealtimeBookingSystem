@@ -322,3 +322,36 @@ async def complete_batch(
         limit,
     )
     return len(rows)
+
+
+async def add_attempt(
+    conn: asyncpg.Connection,
+    *,
+    user: dict,
+    cmd,
+    outcome: str,
+    reason: str | None,
+    detail: str | None,
+    http_status: int,
+    booking_id: UUID | None,
+    now: datetime,
+) -> None:
+    """One row per booking attempt (C1). `cmd.quantity` is what was asked for, not what was granted."""
+    await conn.execute(
+        "INSERT INTO booking_attempts (user_id, resource_id, start_time, end_time, quantity,"
+        " waitlist_requested, outcome, reason, detail, http_status, booking_id, user_group, created_at)"
+        " VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)",
+        user["user_id"],
+        cmd.resource_id,
+        cmd.start_time,
+        cmd.end_time,
+        cmd.quantity,
+        cmd.waitlist_if_full,
+        outcome,
+        reason,
+        detail,
+        http_status,
+        booking_id,
+        user["user_group"],
+        now,
+    )
