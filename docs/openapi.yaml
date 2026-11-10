@@ -544,7 +544,48 @@ paths:
               schema: { $ref: "#/components/schemas/MetricsSummary" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-
+  /admin/metrics/chance:
+    get:
+      tags: [admin]
+      operationId: adminChanceSummary
+      description: Distribution of per-user success probability (attempts that ended with a seat).
+      parameters:
+        - {
+            name: resource_id,
+            in: query,
+            schema: { type: string, format: uuid },
+          }
+        - {
+            name: window_days,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 90, default: 14 },
+          }
+      responses:
+        "200":
+          description: Chance distribution
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChanceSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /users/me/chance:
+    get:
+      tags: [users]
+      operationId: getMyChance
+      description: The caller's own success rate and the cohort median (aggregates only).
+      parameters:
+        - {
+            name: window_days,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 90, default: 14 },
+          }
+      responses:
+        "200":
+          description: Own chance
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MyChance" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -615,6 +656,63 @@ components:
         { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   schemas:
+    ChanceSummary:
+      type: object
+      required:
+        [
+          window_days,
+          users,
+          attempts,
+          chance_mean,
+          chance_min,
+          chance_p10,
+          chance_median,
+          chance_gini,
+          chance_low_share,
+          by_group,
+          histogram,
+        ]
+      properties:
+        window_days: { type: integer }
+        users: { type: integer }
+        attempts: { type: integer }
+        chance_mean: { type: number }
+        chance_min: { type: number }
+        chance_p10: { type: number }
+        chance_median: { type: number }
+        chance_gini: { type: number }
+        chance_low_share:
+          {
+            type: number,
+            description: Share of users below half the mean chance,
+          }
+        by_group:
+          type: array
+          items:
+            type: object
+            required: [user_group, users, mean_chance]
+            properties:
+              user_group: { type: string }
+              users: { type: integer }
+              mean_chance: { type: number }
+        histogram:
+          {
+            type: array,
+            items: { type: integer },
+            description: Users per 0.1-wide chance bucket,
+            10 entries,
+          }
+    MyChance:
+      type: object
+      required: [window_days, attempts, successes, cohort_users]
+      properties:
+        window_days: { type: integer }
+        attempts: { type: integer }
+        successes: { type: integer }
+        my_chance: { type: number, nullable: true }
+        cohort_users: { type: integer }
+        cohort_median: { type: number, nullable: true }
+        cohort_mean: { type: number, nullable: true }
     AttemptRecord:
       type: object
       required:
