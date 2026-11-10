@@ -34,11 +34,14 @@ async def summary(
     )
     utilization = min(1.0, used / cap_units) if cap_units else 0.0
 
-    # Fairness: users who created a booking in the window; x = how many of their bookings were ever confirmed.
+    # Fairness: everyone who attempted a booking in the window, including users rejected every time.
+    # x = their attempts that ended with a seat (immediately or by waitlist promotion).
     got = await conn.fetch(
-        "SELECT count(*) FILTER (WHERE confirmed_at IS NOT NULL) AS got FROM bookings"
-        " WHERE created_at >= $1 AND created_at <= $2 AND ($3::uuid IS NULL OR resource_id = $3)"
-        " GROUP BY user_id",
+        "SELECT count(*) FILTER (WHERE a.outcome = 'CONFIRMED' OR b.confirmed_at IS NOT NULL) AS got"
+        " FROM booking_attempts a LEFT JOIN bookings b ON b.booking_id = a.booking_id"
+        " WHERE a.created_at >= $1 AND a.created_at <= $2"
+        " AND ($3::uuid IS NULL OR a.resource_id = $3)"
+        " GROUP BY a.user_id",
         start,
         now,
         resource_id,
