@@ -53,3 +53,30 @@ def aggregate(
             row[m], row[m + "_ci95"] = round(mean, 4), round(ci, 4)
         rows.append(row)
     return rows
+
+
+def paired_delta(
+    runs: list[dict], scenario: str, system: str, baseline: str, metric: str
+):
+    """Mean and 95% CI half-width of (system - baseline) over seeds. Same seeds = same traces."""
+    by = {(r["scenario"], r["system"], r["seed"]): r for r in runs}
+    seeds = sorted({r["seed"] for r in runs})
+    deltas = [
+        by[(scenario, system, s)][metric] - by[(scenario, baseline, s)][metric]
+        for s in seeds
+    ]
+    return mean_ci95(deltas)
+
+
+def pareto_front(points: dict[str, tuple[float, float]]) -> set[str]:
+    """Labels not dominated by another point (both coordinates: higher is better)."""
+    keep = set()
+    for a, (ax, ay) in points.items():
+        dominated = any(
+            bx >= ax and by >= ay and (bx > ax or by > ay)
+            for b, (bx, by) in points.items()
+            if b != a
+        )
+        if not dominated:
+            keep.add(a)
+    return keep
