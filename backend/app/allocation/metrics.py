@@ -66,3 +66,38 @@ def mean_ci95(values: Sequence[float]) -> tuple[float, float]:
     sd = math.sqrt(sum((v - m) ** 2 for v in values) / (n - 1))
     t = _T975[n - 2] if n - 1 <= len(_T975) else 1.96
     return m, t * sd / math.sqrt(n)
+
+
+def gini(values: Iterable[float]) -> float:
+    """0 = everyone has the same chance, (n-1)/n = one user has everything."""
+    xs = sorted(values)
+    n, total = len(xs), sum(xs)
+    if n == 0 or total == 0:
+        return 0.0
+    return 2 * sum(i * x for i, x in enumerate(xs, 1)) / (n * total) - (n + 1) / n
+
+
+def chance_stats(chances: Sequence[float]) -> dict:
+    """Summary of per-user success probabilities (each in [0, 1])."""
+    n = len(chances)
+    if n == 0:
+        return {
+            k: 0.0
+            for k in (
+                "chance_mean",
+                "chance_min",
+                "chance_p10",
+                "chance_median",
+                "chance_gini",
+                "chance_low_share",
+            )
+        }
+    mean = sum(chances) / n
+    return {
+        "chance_mean": mean,
+        "chance_min": min(chances),
+        "chance_p10": percentile(chances, 10),
+        "chance_median": percentile(chances, 50),
+        "chance_gini": gini(chances),
+        "chance_low_share": ((sum(1 for c in chances if c < 0.5 * mean) / n) if mean > 0 else 0.0),
+    }
