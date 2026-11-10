@@ -7,7 +7,7 @@ from pydantic import AwareDatetime
 
 from app.admin import attempts, metrics
 from app.admin.schemas import AttemptPage, RejectionSummaryOut
-from app.allocation import queries
+from app.allocation import ChanceSummaryOut, chance, queries
 from app.allocation.schemas import AllocationPage, MetricsSummaryOut, WaitlistPage
 from app.booking import service as booking_service
 from app.identity.deps import require_admin
@@ -107,5 +107,20 @@ async def admin_rejection_summary(
     conn: asyncpg.Connection = Depends(get_conn),
 ):
     return await attempts.rejection_summary(
+        conn, resource_id=resource_id, window_days=window_days, now=clock.now()
+    )
+
+
+@router.get(
+    "/metrics/chance",
+    response_model=ChanceSummaryOut,
+    dependencies=[Depends(require_admin)],
+)
+async def admin_chance(
+    resource_id: UUID | None = None,
+    window_days: int = Query(14, ge=1, le=90),
+    conn: asyncpg.Connection = Depends(get_conn),
+):
+    return await chance.summary(
         conn, resource_id=resource_id, window_days=window_days, now=clock.now()
     )
