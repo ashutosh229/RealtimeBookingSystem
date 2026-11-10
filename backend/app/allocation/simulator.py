@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from app.allocation.base import AllocationContext, AllocationPolicy, Candidate
-from app.allocation.metrics import jain_index, percentile
+from app.allocation.metrics import chance_stats, jain_index, percentile
 
 _EPOCH = datetime(2030, 1, 1, tzinfo=UTC)
 
@@ -27,14 +27,22 @@ class Request:
 class SimConfig:
     rounds: int
     capacity: int  # units served per round
-    patience: int = 10  # a request may wait this many rounds after arrival, then expires
+    patience: int = (
+        10  # a request may wait this many rounds after arrival, then expires
+    )
     window_rounds: int = 14  # rolling window for "recent allocations" (1 round = 1 day)
-    contention_k: int = 2  # a win is contended if >= k other requests were still waiting after it
+    contention_k: int = (
+        2  # a win is contended if >= k other requests were still waiting after it
+    )
     heavy_users: frozenset[int] = frozenset()  # for the heavy-share metrics only
     min_gap: int = 0  # a user may win at most once per `min_gap` rounds (0 = off)
     gamers: frozenset[int] = frozenset()  # accounts that cancel-hoard (B4)
-    gamer_cancel_p: float = 0.0  # probability a gamer cancels a win, too late to re-offer the seat
-    cancel_counts: bool = True  # True: a late-cancelled win still counts toward usage (the penalty)
+    gamer_cancel_p: float = (
+        0.0  # probability a gamer cancels a win, too late to re-offer the seat
+    )
+    cancel_counts: bool = (
+        True  # True: a late-cancelled win still counts toward usage (the penalty)
+    )
     cancel_seed: int = 0
 
 
@@ -83,7 +91,9 @@ def generate_trace(
     n_heavy = len(heavy_set(users, heavy_frac))
     heavy, light = range(n_heavy), range(n_heavy, users)
     peak_rounds = [
-        r for r in range(rounds) if r % peak_period < max(1, round(peak_period * peak_frac))
+        r
+        for r in range(rounds)
+        if r % peak_period < max(1, round(peak_period * peak_frac))
     ]
     total = round(demand_ratio * capacity * rounds)
     reqs = []
@@ -122,7 +132,8 @@ def with_sybils(
         for i, o in enumerate(owners)
     }
     out = [
-        Request(r.round, rng.choice(alias[r.user]) if r.user in alias else r.user) for r in requests
+        Request(r.round, rng.choice(alias[r.user]) if r.user in alias else r.user)
+        for r in requests
     ]
     return out, frozenset(a for ids in alias.values() for a in ids)
 
@@ -134,7 +145,9 @@ def _window_count(hist: dict[int, deque[int]], user: int, rnd: int, window: int)
     return len(dq)
 
 
-def simulate(policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConfig) -> SimResult:
+def simulate(
+    policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConfig
+) -> SimResult:
     """One round = arrivals, expiry, then up to `capacity` picks, re-ranking after every pick.
 
     After a pick only the winner's usage changes, so only the winner's remaining requests are
@@ -175,12 +188,19 @@ def simulate(policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConf
             queue.append(Candidate(id=seq, user_id=r.user, seq=seq, created_at=now))
         queue = [c for c in queue if rnd - arrival[c.id] <= cfg.patience]  # expire
 
-        eligible = [c for c in queue if not _cooling(last_win, c.user_id, rnd, cfg.min_gap)]
+        eligible = [
+            c for c in queue if not _cooling(last_win, c.user_id, rnd, cfg.min_gap)
+        ]
         per_user: dict[int, list[Candidate]] = defaultdict(list)
         for c in eligible:
             per_user[c.user_id].append(c)
-        recent = {u: _window_count(history, u, rnd, cfg.window_rounds) for u in per_user}
-        recent_c = {u: _window_count(contended_hist, u, rnd, cfg.window_rounds) for u in per_user}
+        recent = {
+            u: _window_count(history, u, rnd, cfg.window_rounds) for u in per_user
+        }
+        recent_c = {
+            u: _window_count(contended_hist, u, rnd, cfg.window_rounds)
+            for u in per_user
+        }
         ages = {u: [float(rnd - x) for x in history[u]] for u in per_user}
         ctx = AllocationContext(
             now=now,
@@ -203,7 +223,11 @@ def simulate(policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConf
             contenders = ([main[0]] if main else []) + list(best_of.values())
             if not contenders:
                 break
-            best = contenders[0] if len(contenders) == 1 else timed_rank(contenders, ctx)[0]
+            best = (
+                contenders[0]
+                if len(contenders) == 1
+                else timed_rank(contenders, ctx)[0]
+            )
 
             u = best.user_id
             waiting -= 1  # eligible requests still waiting after this win
@@ -241,7 +265,9 @@ def simulate(policy: AllocationPolicy, requests: Sequence[Request], cfg: SimConf
             else:
                 rest_of[u] = rest
                 if rest:
-                    best_of[u] = timed_rank(rest, ctx)[0]  # re-rank with the winner's new usage
+                    best_of[u] = timed_rank(rest, ctx)[
+                        0
+                    ]  # re-rank with the winner's new usage
                 else:
                     best_of.pop(u, None)
 
@@ -273,23 +299,41 @@ def summarize(res: SimResult) -> dict:
     heavy_alloc = sum(n for u, n in res.allocated.items() if u in heavy)
     gamer_alloc = sum(n for u, n in res.allocated.items() if u in gamers)
     honest_req = sum(n for u, n in res.requested.items() if u not in gamers)
+    chances = [res.allocated.get(u, 0) / res.requested[u] for u in users]
+    heavy_p = [c for u, c in zip(users, chances, strict=True) if u in heavy]
+    light_p = [c for u, c in zip(users, chances, strict=True) if u not in heavy]
+    chance_gap = (
+        sum(light_p) / len(light_p) - sum(heavy_p) / len(heavy_p)
+        if heavy_p and light_p
+        else 0.0
+    )
     return {
         "allocated": total_alloc,
         "success_rate": total_alloc / res.total_requests if res.total_requests else 1.0,
-        "starvation_rate": (1 - total_alloc / res.total_requests if res.total_requests else 0.0),
+        "starvation_rate": (
+            1 - total_alloc / res.total_requests if res.total_requests else 0.0
+        ),
         "utilization": total_alloc / capacity_total if capacity_total else 0.0,
         "jain_alloc": jain_index(res.allocated.get(u, 0) for u in users),
-        "jain_satisfaction": jain_index(res.allocated.get(u, 0) / res.requested[u] for u in users),
+        "jain_satisfaction": jain_index(
+            res.allocated.get(u, 0) / res.requested[u] for u in users
+        ),
         "zero_alloc_rate": (
-            (sum(1 for u in users if res.allocated.get(u, 0) == 0) / len(users)) if users else 0.0
+            (sum(1 for u in users if res.allocated.get(u, 0) == 0) / len(users))
+            if users
+            else 0.0
         ),
         "heavy_share_req": heavy_req / total_req if total_req else 0.0,
         "heavy_share_alloc": heavy_alloc / total_alloc if total_alloc else 0.0,
         "wasted_rate": res.wasted / capacity_total if capacity_total else 0.0,
         "gamer_share_alloc": gamer_alloc / total_alloc if total_alloc else 0.0,
-        "honest_success_rate": ((total_alloc - gamer_alloc) / honest_req if honest_req else 1.0),
+        "honest_success_rate": (
+            (total_alloc - gamer_alloc) / honest_req if honest_req else 1.0
+        ),
         "wait_mean": sum(res.waits) / len(res.waits) if res.waits else 0.0,
         "wait_p95": percentile(res.waits, 95),
         "wait_max": max(res.waits, default=0),
         "policy_ms": res.policy_seconds * 1000,
+        **chance_stats(chances),
+        "chance_gap": chance_gap,  # light users' mean chance minus heavy users'
     }
