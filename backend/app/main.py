@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.admin.router import router as admin_router
 from app.allocation.router import me_router as chance_me_router
 from app.allocation.router import router as waitlist_router
+from app.availability import cache as availability_cache
 from app.booking.router import router as booking_router
 from app.identity.router import router as identity_router
 from app.notifications.router import router as notifications_router
@@ -17,7 +18,9 @@ from app.resources.router import router as resources_router
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await db.init_pool()
+    await availability_cache.init()
     yield
+    await availability_cache.close()
     await db.close_pool()
 
 
