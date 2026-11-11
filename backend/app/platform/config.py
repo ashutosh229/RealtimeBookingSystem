@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     sweep_interval_seconds: int = 30
     contention_min_waiting: int = 2
     promotion_min_gap_minutes: int = 0
+    amqp_url: str = "amqp://guest:guest@localhost:5672/"
+    relay_poll_ms: int = 200
+    consumer_prefetch: int = 20
+    max_delivery_attempts: int = 5
 
     @property
     def dsn(self) -> str:
