@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     max_delivery_attempts: int = 5
     redis_url: str = "redis://localhost:6379/0"
     avail_ttl_seconds: int = 10
+    cors_origins: str = "http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006"
 
     @property
     def dsn(self) -> str:
