@@ -2,6 +2,7 @@ import asyncio
 import logging
 import signal
 
+from app.availability import cache as availability_cache
 from app.platform import db
 from app.platform.config import get_settings
 from app.worker import sweeper
@@ -12,6 +13,7 @@ log = logging.getLogger("rtbs.worker")
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     await db.init_pool()
+    await availability_cache.init()
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -35,6 +37,7 @@ async def main() -> None:
             except TimeoutError:
                 pass
     finally:
+        await availability_cache.close()
         await db.close_pool()
         log.info("worker stopped")
 
