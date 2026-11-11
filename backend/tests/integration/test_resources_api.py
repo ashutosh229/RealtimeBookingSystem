@@ -28,6 +28,7 @@ async def client():
         rs = "(SELECT resource_id FROM resources WHERE name LIKE 'itest-%')"
         await conn.execute(f"DELETE FROM bookings WHERE resource_id IN {rs}")
         await conn.execute(f"DELETE FROM slot_usage WHERE resource_id IN {rs}")
+        await conn.execute(f"DELETE FROM outbox_events WHERE aggregate_id IN {rs}")
         await conn.execute("DELETE FROM resources WHERE name LIKE 'itest-%'")
         await conn.execute(
             "DELETE FROM refresh_tokens WHERE user_id IN"
