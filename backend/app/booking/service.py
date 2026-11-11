@@ -9,6 +9,7 @@ from uuid import UUID
 
 import asyncpg
 
+from app.availability import cache as availability_cache
 from app.booking import idempotency as idem
 from app.booking import ledger, repo
 from app.booking.schemas import BookingCreate, BookingOut
@@ -61,7 +62,10 @@ async def create_booking(
     try:
         for attempt in range(MAX_ATTEMPTS):
             try:
-                return await _create_once(conn, user, cmd, key, h)
+                result = await _create_once(conn, user, cmd, key, h)
+                if result.status == 201 and not result.replayed:
+                    await availability_cache.bump(cmd.resource_id)
+                return result
             except asyncpg.DeadlockDetectedError:
                 await asyncio.sleep(random.uniform(0, 0.02 * (attempt + 1)))
             except (
@@ -331,6 +335,7 @@ async def cancel_locked(
 
 async def cancel_booking(conn, actor: dict, booking_id: UUID):
     now = clock.now()
+    released_resource = None
     async with conn.transaction():
         b = await repo.get_for_update(conn, booking_id)
         if b is None or (b["user_id"] != actor["user_id"] and actor["role"] != "admin"):
@@ -341,6 +346,10 @@ async def cancel_booking(conn, actor: dict, booking_id: UUID):
             check_cancellable(b, actor["role"], now)
             reason = "user_cancel" if b["user_id"] == actor["user_id"] else "admin_cancel"
             await cancel_locked(conn, b, actor["user_id"], reason, now)
+            if b["status"] == "CONFIRMED":
+                released_resource = b["resource_id"]
+    if released_resource:
+        await availability_cache.bump(released_resource)
     return await repo.get_view(conn, booking_id)
 
 
@@ -375,6 +384,17 @@ async def force_deactivate(conn, admin: dict, resource_id: UUID):
             "UPDATE resources SET active = false, version = version + 1 WHERE resource_id = $1",
             resource_id,
         )
+        await outbox.add(
+            conn,
+            events.ResourceUpdated(
+                aggregate_id=resource_id,
+                occurred_at=now,
+                payload=events.ResourceUpdatedPayload(
+                    resource_id=resource_id, change="deactivated"
+                ),
+            ),
+        )
+    await availability_cache.bump(resource_id)
     return await resources_repo.get(conn, resource_id)
 
 
