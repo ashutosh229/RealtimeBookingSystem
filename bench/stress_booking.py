@@ -49,6 +49,7 @@ DELETE FROM booking_status_history WHERE booking_id IN {BK};
 DELETE FROM waitlist_entries WHERE booking_id IN {BK};
 DELETE FROM bookings WHERE resource_id IN {RS};
 DELETE FROM slot_usage WHERE resource_id IN {RS};
+DELETE FROM outbox_events WHERE aggregate_id IN {RS};
 DELETE FROM resources WHERE name LIKE 'bench-%';
 DELETE FROM idempotency_keys WHERE user_id IN {US};
 DELETE FROM refresh_tokens WHERE user_id IN {US};
