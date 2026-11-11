@@ -52,6 +52,7 @@ DELETE FROM slot_usage WHERE resource_id IN {RS};
 DELETE FROM resources WHERE name LIKE 'bench-%';
 DELETE FROM idempotency_keys WHERE user_id IN {US};
 DELETE FROM refresh_tokens WHERE user_id IN {US};
+DELETE FROM notifications WHERE user_id IN {US};
 DELETE FROM users WHERE email LIKE '%@bench.test';
 """
 
