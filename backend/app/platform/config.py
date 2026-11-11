@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     relay_poll_ms: int = 200
     consumer_prefetch: int = 20
     max_delivery_attempts: int = 5
+    redis_url: str = "redis://localhost:6379/0"
+    avail_ttl_seconds: int = 10
 
     @property
     def dsn(self) -> str:
