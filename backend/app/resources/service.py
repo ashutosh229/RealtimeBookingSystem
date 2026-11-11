@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import asyncpg
 
+from app.messaging import events, outbox
+from app.platform import clock
 from app.platform.errors import ApiError
 from app.resources import repo
 from app.resources.schemas import ResourceCreate, ResourceUpdate
@@ -141,3 +143,14 @@ async def deactivate(conn: asyncpg.Connection, rid: UUID) -> asyncpg.Record:
             rid,
         )
     return await repo.get(conn, rid)
+
+
+async def _emit(conn, rid: UUID, change: str) -> None:
+    await outbox.add(
+        conn,
+        events.ResourceUpdated(
+            aggregate_id=rid,
+            occurred_at=clock.now(),
+            payload=events.ResourceUpdatedPayload(resource_id=rid, change=change),
+        ),
+    )
