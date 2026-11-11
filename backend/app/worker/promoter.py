@@ -9,6 +9,7 @@ import asyncpg
 from app.allocation import repo as alloc_repo
 from app.allocation.base import AllocationContext, Candidate
 from app.allocation.registry import policy_by_name
+from app.availability import cache as availability_cache
 from app.booking import service as booking_service
 from app.platform import clock
 from app.platform.config import get_settings
@@ -140,4 +141,6 @@ async def promote_for_resource(
             if gap:  # the winner now cools down: its other requests leave this pass
                 cooling.add(winner.user_id)
                 pending = [c for c in pending if c.user_id != winner.user_id]
+    if promoted:
+        await availability_cache.bump(resource_id)
     return promoted
