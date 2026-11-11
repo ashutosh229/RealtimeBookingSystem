@@ -9,6 +9,7 @@ RETRY_DELAYS_MS = (5_000, 30_000, 120_000)
 BINDINGS: dict[str, tuple[str, ...]] = {
     "notify": ("booking.*",),
     "promote": ("capacity.released",),
+    "cache": ("booking.*", "capacity.released", "resource.updated"),
 }
 
 
