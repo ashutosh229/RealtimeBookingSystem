@@ -1,19 +1,15 @@
-import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
 import { Stack } from "expo-router";
-import { ApiError } from "../api/client";
+import { useState } from "react";
+import { Text, TextInput, View } from "react-native";
 import { useAuth } from "../auth/AuthContext";
+import { explain } from "../lib/errors";
+import { Button, Note, s } from "../ui";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, register } = useAuth();
+  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("student1@campus.test");
+  const [name, setName] = useState("");
   const [password, setPassword] = useState("password123");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -22,76 +18,64 @@ export default function Login() {
     setBusy(true);
     setError(null);
     try {
-      await login(email.trim(), password);
+      if (mode === "login") await login(email.trim(), password);
+      else await register(email.trim(), name.trim() || "Student", password);
     } catch (e) {
-      setError(
-        e instanceof ApiError ? e.message : "Could not reach the server",
-      );
+      setError(explain(e));
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <View style={s.container}>
-      <Stack.Screen options={{ title: "Sign in" }} />
-      <Text style={s.title}>RealTime Booking</Text>
-      <TextInput
-        style={s.input}
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        placeholder="Email"
+    <View style={[s.screen, { justifyContent: "center", padding: 24 }]}>
+      <Stack.Screen
+        options={{ title: mode === "login" ? "Sign in" : "Create account" }}
       />
-      <TextInput
-        style={s.input}
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        placeholder="Password"
-      />
-      {error && <Text style={s.error}>{error}</Text>}
-      <Pressable
-        style={[s.button, busy && s.disabled]}
-        onPress={submit}
-        disabled={busy}
+      <View
+        style={{ gap: 12, maxWidth: 480, width: "100%", alignSelf: "center" }}
       >
-        {busy ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={s.buttonText}>Sign in</Text>
+        <Text style={s.h1}>RealTime Booking</Text>
+        <TextInput
+          style={s.input}
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          placeholder="Email"
+        />
+        {mode === "register" && (
+          <TextInput
+            style={s.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="Name"
+          />
         )}
-      </Pressable>
+        <TextInput
+          style={s.input}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          placeholder="Password (8+ characters)"
+        />
+        {error && <Note tone="error">{error}</Note>}
+        <Button
+          title={mode === "login" ? "Sign in" : "Create account"}
+          onPress={submit}
+          busy={busy}
+        />
+        <Button
+          kind="ghost"
+          title={
+            mode === "login" ? "Create an account" : "I already have an account"
+          }
+          onPress={() => {
+            setMode(mode === "login" ? "register" : "login");
+            setError(null);
+          }}
+        />
+      </View>
     </View>
   );
 }
-
-const s = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 24,
-    gap: 12,
-    maxWidth: 480,
-    width: "100%",
-    alignSelf: "center",
-  },
-  title: { fontSize: 28, fontWeight: "700", marginBottom: 12 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#bbb",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: "#2563eb",
-    borderRadius: 8,
-    padding: 14,
-    alignItems: "center",
-  },
-  disabled: { opacity: 0.6 },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  error: { color: "#b91c1c" },
-});
