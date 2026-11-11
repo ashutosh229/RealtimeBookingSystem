@@ -2,8 +2,9 @@ from datetime import date, datetime
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
 
+from app.availability import cache as availability_cache
 from app.availability import service as availability
 from app.identity.deps import current_user, require_admin
 from app.platform.db import get_conn
@@ -65,14 +66,29 @@ async def get_resource(
 @router.get("/{resource_id}/availability", response_model=AvailabilityOut)
 async def get_availability(
     resource_id: UUID,
+    request: Request,
+    response: Response,
     date: date | None = None,
     from_: datetime | None = Query(None, alias="from"),
     to: datetime | None = None,
     user: dict = Depends(current_user),
     conn: asyncpg.Connection = Depends(get_conn),
 ):
-    res = await _visible(conn, resource_id, user)
-    return await availability.get_availability(conn, res, day=date, frm=from_, to=to)
+    async def load():
+        res = await _visible(
+            conn, resource_id, user
+        )  # 404 for unknown or (non-admin) inactive resources
+        data = await availability.get_availability(conn, res, day=date, frm=from_, to=to)
+        return data, bool(res["active"])  # only active resources are cached
+
+    no_cache = "no-cache" in request.headers.get("cache-control", "").lower()
+    if date is not None and from_ is None and to is None and not no_cache:
+        data, state = await availability_cache.cached(str(resource_id), date.isoformat(), load)
+    else:
+        data, _ = await load()
+        state = "BYPASS"
+    response.headers["X-Cache"] = state
+    return data
 
 
 @admin_router.post("", status_code=201, response_model=ResourceOut)
