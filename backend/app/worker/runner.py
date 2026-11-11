@@ -5,6 +5,7 @@ import logging
 import signal
 import sys
 
+from app.availability import cache as availability_cache
 from app.messaging import consumer, relay
 from app.platform import db
 from app.worker.handlers import HANDLERS
@@ -13,6 +14,7 @@ from app.worker.handlers import HANDLERS
 async def main(role: str) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     await db.init_pool()
+    await availability_cache.init()
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -28,6 +30,7 @@ async def main(role: str) -> None:
         else:
             raise SystemExit(f"unknown role {role!r}: use relay or consumers")
     finally:
+        await availability_cache.close()
         await db.close_pool()
 
 
