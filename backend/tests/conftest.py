@@ -64,10 +64,12 @@ async def client(monkeypatch):
         bk = f"(SELECT booking_id FROM bookings WHERE resource_id IN {rs})"
         users = "(SELECT user_id FROM users WHERE email LIKE '%@itest.local')"
         await conn.execute(
-            "DELETE FROM processed_events WHERE event_id IN"
-            f" (SELECT event_id FROM outbox_events WHERE aggregate_id IN {bk})"
+            "DELETE FROM processed_events WHERE event_id IN (SELECT event_id FROM outbox_events"
+            f" WHERE aggregate_id IN {bk} OR aggregate_id IN {rs})"
         )
-        await conn.execute(f"DELETE FROM outbox_events WHERE aggregate_id IN {bk}")
+        await conn.execute(
+            f"DELETE FROM outbox_events WHERE aggregate_id IN {bk} OR aggregate_id IN {rs}"
+        )
         for t in ("allocation_records", "booking_status_history", "waitlist_entries"):
             await conn.execute(f"DELETE FROM {t} WHERE booking_id IN {bk}")
         await conn.execute(f"DELETE FROM bookings WHERE resource_id IN {rs}")
