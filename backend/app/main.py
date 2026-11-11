@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.admin.router import router as admin_router
 from app.allocation.router import me_router as chance_me_router
@@ -10,6 +11,7 @@ from app.booking.router import router as booking_router
 from app.identity.router import router as identity_router
 from app.notifications.router import router as notifications_router
 from app.platform import db, errors
+from app.platform.config import get_settings
 from app.platform.errors import ApiError
 from app.resources.router import admin_router as resources_admin_router
 from app.resources.router import router as resources_router
@@ -26,6 +28,26 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="RealTime Booking System", version="0.1.0", lifespan=lifespan)
 errors.install(app)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in get_settings().cors_origins.split(",") if o.strip()],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Idempotency-Key",
+        "Cache-Control",
+        "X-Request-Id",
+    ],
+    expose_headers=[
+        "X-Request-Id",
+        "X-Cache",
+        "Idempotent-Replay",
+        "Location",
+        "Retry-After",
+    ],
+    max_age=600,
+)
 app.include_router(identity_router, prefix="/v1")
 app.include_router(resources_router, prefix="/v1")
 app.include_router(resources_admin_router, prefix="/v1")
