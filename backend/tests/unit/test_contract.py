@@ -14,10 +14,8 @@ pytestmark = pytest.mark.skipif(not SPEC.exists(), reason="docs/openapi.yaml not
 HTTP = {"get", "post", "put", "patch", "delete"}
 
 # Documented in the contract but not built yet. Shrinks as phases land; a stale entry fails the test.
-NOT_YET = {
-    ("get", "/users/me/notifications"),
-    ("post", "/users/me/notifications/{notification_id}/read"),
-}
+NOT_YET = set()
+
 # Documented query params not built yet (geo search and availability filter arrive in Phase 6).
 PARAMS_NOT_YET = {
     ("get", "/resources"): {"available_from", "available_to", "lat", "lon", "radius_m"}
@@ -44,6 +42,8 @@ SCHEMA_PAIRS = {  # yaml schema -> pydantic model
     "RejectionSummary": "RejectionSummaryOut",
     "ChanceSummary": "ChanceSummaryOut",
     "MyChance": "MyChanceOut",
+    "Notification": "NotificationOut",
+    "NotificationList": "NotificationList",
 }
 
 
