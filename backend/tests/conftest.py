@@ -62,13 +62,18 @@ async def client(monkeypatch):
     async with db.get_pool().acquire() as conn:
         rs = "(SELECT resource_id FROM resources WHERE name LIKE 'itest-%')"
         bk = f"(SELECT booking_id FROM bookings WHERE resource_id IN {rs})"
+        users = "(SELECT user_id FROM users WHERE email LIKE '%@itest.local')"
+        await conn.execute(
+            "DELETE FROM processed_events WHERE event_id IN"
+            f" (SELECT event_id FROM outbox_events WHERE aggregate_id IN {bk})"
+        )
         await conn.execute(f"DELETE FROM outbox_events WHERE aggregate_id IN {bk}")
         for t in ("allocation_records", "booking_status_history", "waitlist_entries"):
             await conn.execute(f"DELETE FROM {t} WHERE booking_id IN {bk}")
         await conn.execute(f"DELETE FROM bookings WHERE resource_id IN {rs}")
         await conn.execute(f"DELETE FROM slot_usage WHERE resource_id IN {rs}")
         await conn.execute("DELETE FROM resources WHERE name LIKE 'itest-%'")
-        users = "(SELECT user_id FROM users WHERE email LIKE '%@itest.local')"
+        await conn.execute(f"DELETE FROM notifications WHERE user_id IN {users}")
         await conn.execute(f"DELETE FROM idempotency_keys WHERE user_id IN {users}")
         await conn.execute(f"DELETE FROM refresh_tokens WHERE user_id IN {users}")
         await conn.execute("DELETE FROM users WHERE email LIKE '%@itest.local'")
