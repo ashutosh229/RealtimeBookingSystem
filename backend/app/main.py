@@ -7,6 +7,7 @@ from app.allocation.router import me_router as chance_me_router
 from app.allocation.router import router as waitlist_router
 from app.booking.router import router as booking_router
 from app.identity.router import router as identity_router
+from app.notifications.router import router as notifications_router
 from app.platform import db, errors
 from app.platform.errors import ApiError
 from app.resources.router import admin_router as resources_admin_router
@@ -29,6 +30,7 @@ app.include_router(booking_router, prefix="/v1")
 app.include_router(admin_router, prefix="/v1")
 app.include_router(waitlist_router, prefix="/v1")
 app.include_router(chance_me_router, prefix="/v1")
+app.include_router(notifications_router, prefix="/v1")
 
 
 @app.get("/healthz")
