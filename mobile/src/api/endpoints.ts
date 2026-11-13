@@ -1,5 +1,12 @@
 import { api, apiRaw, type Raw } from "./client";
-import type { Availability, Booking, Resource } from "./generated";
+import type {
+  Availability,
+  Booking,
+  Resource,
+  MetricsSummary,
+  RejectionSummary,
+  ChanceSummary,
+} from "./generated";
 
 export type Page<T> = { items: T[]; next_cursor?: string | null };
 export type BookingRequest = {
@@ -29,3 +36,15 @@ export const cancelBooking = (id: string) =>
   api<Booking>(`/bookings/${id}/cancel`, { method: "POST" });
 export const listMyBookings = (cursor?: string) =>
   api<Page<Booking>>("/users/me/bookings", { params: { limit: 20, cursor } });
+export const adminSummary = (days: number) =>
+  api<MetricsSummary>("/admin/metrics/summary", {
+    params: { window_days: days },
+  });
+export const adminRejections = (days: number) =>
+  api<RejectionSummary>("/admin/metrics/rejections", {
+    params: { window_days: days },
+  });
+export const adminChance = (days: number) =>
+  api<ChanceSummary>("/admin/metrics/chance", {
+    params: { window_days: days },
+  });
