@@ -1,0 +1,23 @@
+{
+	auto_https off
+}
+
+:3000 {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+
+	@api path /v1/* /healthz /readyz
+	handle @api {
+		import upstreams.caddy
+	}
+
+	handle {
+		root * /srv/web
+		try_files {path} /index.html
+		file_server
+	}
+}
