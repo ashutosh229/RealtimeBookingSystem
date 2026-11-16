@@ -1,0 +1,22 @@
+name: deploy
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: branch or commit to deploy
+        default: main
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          REF: ${{ inputs.ref }}
+        run: |
+          [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "bad ref"; exit 1; }
+          install -m 600 /dev/null key
+          printf '%s\n' "$KEY" > key
+          ssh -i key -o StrictHostKeyChecking=accept-new "$SSH_USER@$HOST" "cd ~/rtbs && ./deploy/deploy.sh '$REF'"
