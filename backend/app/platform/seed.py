@@ -9,7 +9,7 @@ from argon2 import PasswordHasher
 
 DSN = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
 TZ = os.environ.get("CAMPUS_TZ", "UTC")
-DEV_PASSWORD = "password123"
+DEV_PASSWORD = os.environ.get("SEED_PASSWORD", "password123")
 
 USERS = [("admin@campus.test", "Admin", "admin", "staff")] + [
     (f"student{i}@campus.test", f"Student {i}", "student", "ug" if i <= 3 else "pg")
