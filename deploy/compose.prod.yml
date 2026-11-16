@@ -1,0 +1,150 @@
+name: rtbs-prod
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+x-app: &app
+  build: ../backend
+  image: rtbs-backend:latest
+  env_file: ../.env.prod
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  postgres:
+    image: postgres:16
+    env_file: ../.env.prod
+    command:
+      [
+        "postgres",
+        "-c",
+        "max_connections=300",
+        "-c",
+        "shared_buffers=2GB",
+        "-c",
+        "effective_cache_size=8GB",
+      ]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["127.0.0.1:5432:5432"] # VM-local only: use an SSH tunnel to reach it
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 6g
+    logging: *logging
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 128m
+    logging: *logging
+
+  rabbitmq:
+    image: rabbitmq:3.13
+    env_file: ../.env.prod
+    volumes: [mqdata:/var/lib/rabbitmq]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 512m
+    logging: *logging
+
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  api:
+    <<: *app
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--proxy-headers",
+        "--forwarded-allow-ips",
+        "*",
+      ]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request;urllib.request.urlopen('http://localhost:8000/readyz')",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+    mem_limit: 600m
+
+  worker:
+    <<: *app
+    command: ["python", "-m", "app.worker.main"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    stop_grace_period: 30s
+    mem_limit: 256m
+
+  relay:
+    <<: *app
+    command: ["python", "-m", "app.worker.runner", "relay"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      rabbitmq: { condition: service_healthy }
+    stop_grace_period: 30s
+    mem_limit: 256m
+
+  consumers:
+    <<: *app
+    command: ["python", "-m", "app.worker.runner", "consumers"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      rabbitmq: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    stop_grace_period: 30s
+    mem_limit: 256m
+
+  caddy:
+    image: caddy:2
+    ports: ["3000:3000"] # the VM maps 3000 to the global port 3501
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./upstreams.caddy:/etc/caddy/upstreams.caddy:ro
+      - ../web:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api: { condition: service_healthy }
+    restart: unless-stopped
+    mem_limit: 256m
+    logging: *logging
+
+volumes:
+  pgdata:
+  mqdata:
+  caddy_data:
+  caddy_config:
