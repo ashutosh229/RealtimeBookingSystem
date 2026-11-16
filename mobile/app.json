@@ -20,7 +20,8 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "output": "server",
+      "bundler": "metro",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -33,7 +34,8 @@
           "imageWidth": 76
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      ["expo-build-properties", { "android": { "usesCleartextTraffic": true } }]
     ],
     "experiments": {
       "typedRoutes": true,
