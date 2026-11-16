@@ -11,3 +11,9 @@ dist/
 !bench/results/.gitkeep
 *.log
 mobile/src/api/generated/
+.env.prod
+/backups/
+/web/
+deploy/upstreams.caddy
+/run/
+/.venv/
