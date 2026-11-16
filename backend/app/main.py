@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import socket
+import os
 
 from app.admin.router import router as admin_router
 from app.allocation.router import me_router as chance_me_router
@@ -27,10 +29,24 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="RealTime Booking System", version="0.1.0", lifespan=lifespan)
+
 errors.install(app)
+
+_INSTANCE = f"{socket.gethostname()}:{os.getpid()}"
+
+
+@app.middleware("http")
+async def instance_header(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Instance"] = _INSTANCE
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in get_settings().cors_origins.split(",") if o.strip()],
+    allow_origins=[
+        o.strip() for o in get_settings().cors_origins.split(",") if o.strip()
+    ],
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
         "Authorization",
