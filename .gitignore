@@ -17,3 +17,5 @@ mobile/src/api/generated/
 deploy/upstreams.caddy
 /run/
 /.venv/
+
+notes.txt
