@@ -1,0 +1,25 @@
+{
+  "ok": true,
+  "invariant_violations": 0,
+  "confirmed_in_db": 0,
+  "created": 5724,
+  "cancelled": 5724,
+  "args": {
+    "base": "http://10.1.75.53:3501",
+    "replicas": 2,
+    "concurrency": [
+      32,
+      64,
+      128
+    ],
+    "duration": 30.0,
+    "warmup": 5.0,
+    "read_share": 0.7,
+    "seed": 7,
+    "note": "VM 8 cores allotted, generator on laptop"
+  },
+  "note": "VM 8 cores allotted, generator on laptop",
+  "git_sha": "b31a639",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.3"
+}
