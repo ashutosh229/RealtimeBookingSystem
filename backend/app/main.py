@@ -1,10 +1,12 @@
+import os
+import socket
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import socket
-import os
+from fastapi.responses import PlainTextResponse
 
+from app.admin import prom
 from app.admin.router import router as admin_router
 from app.allocation.router import me_router as chance_me_router
 from app.allocation.router import router as waitlist_router
@@ -87,3 +89,11 @@ async def readyz() -> dict[str, str]:
     except Exception:
         raise ApiError(503, "SERVICE_BUSY", "database unavailable") from None
     return {"status": "ready"}
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics() -> PlainTextResponse:
+    """Internal scrape endpoint; nginx does not proxy it to the public port."""
+    async with db.get_pool().acquire() as conn:
+        body = await prom.render(conn)
+    return PlainTextResponse(body, media_type="text/plain; version=0.0.4")
