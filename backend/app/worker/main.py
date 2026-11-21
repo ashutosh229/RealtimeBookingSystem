@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import signal
+import time
 
+from app.admin import invariants
 from app.availability import cache as availability_cache
 from app.platform import db
 from app.platform.config import get_settings
@@ -21,8 +23,10 @@ async def main() -> None:
             loop.add_signal_handler(sig, stop.set)  # graceful: finish the current cycle, then exit
         except NotImplementedError:  # Windows
             pass
-    interval = get_settings().sweep_interval_seconds
-    log.info("worker started, sweep every %ss", interval)
+    settings = get_settings()
+    interval, check_every = settings.sweep_interval_seconds, settings.invariant_check_seconds
+    last_check = 0.0
+    log.info("worker started, sweep every %ss, invariant check every %ss", interval, check_every)
     try:
         while not stop.is_set():
             try:
@@ -30,6 +34,10 @@ async def main() -> None:
                     result = await sweeper.run_locked(conn)
                 if result and any(result.values()):
                     log.info("cycle: %s", result)
+                if check_every > 0 and time.monotonic() - last_check >= check_every:
+                    last_check = time.monotonic()
+                    async with db.get_pool().acquire() as conn:
+                        await invariants.run_and_log(conn)
             except Exception:
                 log.exception("sweep cycle failed")
             try:
@@ -44,3 +52,5 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
