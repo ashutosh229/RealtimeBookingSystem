@@ -23,6 +23,16 @@ class Settings(BaseSettings):
     max_delivery_attempts: int = 5
     redis_url: str = "redis://localhost:6379/0"
     avail_ttl_seconds: int = 10
+    # Live surge protection (ADR-0022): per-user token bucket on booking requests. Off by default.
+    rate_limit_enabled: bool = False
+    rate_limit_per_second: float = 1.0
+    rate_limit_burst: int = 10
+    # Invariant checker (ADR-0023): every N seconds in the worker; 0 disables.
+    invariant_check_seconds: int = 60
+    invariant_lookback_days: int = 3  # 0 = check the whole ledger
+    # Operations (ADR-0024)
+    attempts_retention_days: int = 90  # 0 = keep booking_attempts forever
+    user_cache_seconds: int = 0  # in-process cache of the JWT user lookup; 0 = off
     cors_origins: str = "http://localhost:8081,http://127.0.0.1:8081,http://localhost:19006"
 
     @property
@@ -33,3 +43,5 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
