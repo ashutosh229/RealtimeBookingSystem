@@ -21,7 +21,7 @@ from app.booking.state_machine import (
     check_transition,
 )
 from app.messaging import events, outbox
-from app.platform import clock
+from app.platform import clock, ratelimit
 from app.platform.errors import ApiError
 from app.resources import repo as resources_repo
 from app.resources.policy import policy_for
@@ -60,6 +60,7 @@ async def create_booking(
 ) -> Result:
     h = request_hash(cmd)
     try:
+        await ratelimit.check(user["user_id"])  # surge protection; recorded below as an attempt
         for attempt in range(MAX_ATTEMPTS):
             try:
                 result = await _create_once(conn, user, cmd, key, h)
@@ -476,3 +477,5 @@ async def complete_finished(conn, now, resource_ids=None, batch: int = 500) -> i
         total += n
         if n < batch:
             return total
+
+
