@@ -16,6 +16,10 @@ const MSG: Record<string, string> = {
   NETWORK: "Cannot reach the server. Check your connection and try again.",
   INVALID_CREDENTIALS: "Invalid email or password.",
   EMAIL_TAKEN: "That email is already registered.",
+  HAS_ACTIVE_BOOKINGS:
+    "This resource still has upcoming bookings. Cancel them too, or wait until they finish.",
+  FORBIDDEN: "You don't have permission to do that.",
+  NOT_FOUND: "That item no longer exists.",
 };
 
 export const explain = (e: unknown): string =>
