@@ -72,7 +72,9 @@ async def inbox(uid):
 
 
 async def dlq_count(channel, topo) -> int:
-    q = await channel.declare_queue(topo.dlq("notify"), durable=True, passive=True)
+    # Not passive: aio-pika 10's RobustChannel answers a passive declare of a queue it already
+    # declared from its cache, whose message_count is frozen at 0. A real declare is a fresh round trip.
+    q = await channel.declare_queue(topo.dlq("notify"), durable=True)
     return q.declaration_result.message_count
 
 
