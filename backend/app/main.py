@@ -46,9 +46,7 @@ async def instance_header(request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        o.strip() for o in get_settings().cors_origins.split(",") if o.strip()
-    ],
+    allow_origins=[o.strip() for o in get_settings().cors_origins.split(",") if o.strip()],
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
         "Authorization",
