@@ -99,6 +99,7 @@ paths:
         - {
             name: available_from,
             in: query,
+            description: "With available_to: only resources with no fully booked slot overlapping [available_from, available_to)",
             schema: { type: string, format: date-time },
           }
         - {
@@ -124,6 +125,7 @@ paths:
         - {
             name: radius_m,
             in: query,
+            description: "With lat and lon: only resources within this many metres, nearest first, in one page (no cursor); each item carries distance_m",
             schema: { type: integer, minimum: 1, maximum: 50000 },
           }
         - { $ref: "#/components/parameters/Limit" }
@@ -699,8 +701,7 @@ components:
           {
             type: array,
             items: { type: integer },
-            description: Users per 0.1-wide chance bucket,
-            10 entries,
+            description: "Users per 0.1-wide chance bucket (10 entries)",
           }
     MyChance:
       type: object
@@ -787,8 +788,7 @@ components:
           {
             type: array,
             items: { type: integer },
-            description: Rejections per UTC hour,
-            24 entries,
+            description: "Rejections per UTC hour (24 entries)",
           }
     Error:
       type: object
