@@ -36,12 +36,28 @@ async def _visible(conn: asyncpg.Connection, rid: UUID, user: dict) -> asyncpg.R
 async def list_resources(
     type: ResourceType | None = None,
     q: str | None = Query(None, max_length=100),
+    available_from: datetime | None = None,
+    available_to: datetime | None = None,
     eligible_only: bool = True,
+    lat: float | None = Query(None, ge=-90, le=90),
+    lon: float | None = Query(None, ge=-180, le=180),
+    radius_m: int | None = Query(None, ge=1, le=50000),
     limit: int = Query(20, ge=1, le=100),
     cursor: str | None = None,
     user: dict = Depends(current_user),
     conn: asyncpg.Connection = Depends(get_conn),
 ):
+    geo = (lat, lon, radius_m)
+    if any(v is not None for v in geo) and not all(v is not None for v in geo):
+        raise ApiError(422, "VALIDATION_ERROR", "lat, lon and radius_m must be given together")
+    window = (available_from, available_to)
+    if (available_from is None) != (available_to is None):
+        raise ApiError(422, "VALIDATION_ERROR", "available_from and available_to go together")
+    if available_from and available_to:
+        if available_from.tzinfo is None or available_to.tzinfo is None:
+            raise ApiError(422, "VALIDATION_ERROR", "times need a timezone offset")
+        if available_to <= available_from:
+            raise ApiError(422, "VALIDATION_ERROR", "available_to must be after available_from")
     rows, nxt = await repo.list_page(
         conn,
         user=user,
@@ -50,6 +66,8 @@ async def list_resources(
         eligible_only=eligible_only,
         limit=limit,
         cursor=cursor,
+        near=(lat, lon, radius_m) if radius_m is not None else None,  # type: ignore[arg-type]
+        free_between=window if available_from else None,  # type: ignore[arg-type]
     )
     return {"items": [dict(r) for r in rows], "next_cursor": nxt}
 
@@ -102,4 +120,6 @@ async def admin_update(
     body: ResourceUpdate,
     conn: asyncpg.Connection = Depends(get_conn),
 ):
-    return dict(await service.update(conn, resource_id, body))
+    out = dict(await service.update(conn, resource_id, body))
+    await availability_cache.bump(resource_id)  # after commit: read-your-writes (ADR-0020)
+    return out
