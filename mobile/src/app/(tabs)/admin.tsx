@@ -1,18 +1,27 @@
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { useState } from "react";
-import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { FlatList, RefreshControl, ScrollView, Text, View } from "react-native";
 import {
   adminChance,
+  adminListResources,
   adminRejections,
   adminSummary,
 } from "../../api/endpoints";
+import { hhmm } from "../../lib/time";
 import { explain } from "../../lib/errors";
 import {
+  Button,
   Card,
+  EmptyState,
   ErrorBox,
   Icon,
   Loading,
+  MAX_WIDTH,
   Segmented,
+  TYPE_LABEL,
+  Tag,
+  TypeIcon,
   colors,
   groupLabel,
   radius,
@@ -216,7 +225,7 @@ function Histogram({
   );
 }
 
-export default function Admin() {
+function Insights() {
   const [days, setDays] = useState(14);
   const opts = { refetchInterval: 30_000 };
   const sum = useQuery({
@@ -471,5 +480,126 @@ export default function Admin() {
         </Panel>
       )}
     </ScrollView>
+  );
+}
+
+function ManageResources() {
+  const router = useRouter();
+  const q = useQuery({
+    queryKey: ["admin-resources"],
+    queryFn: adminListResources,
+  });
+  const items = [...(q.data ?? [])].sort(
+    (a, b) =>
+      Number(b.active) - Number(a.active) || a.name.localeCompare(b.name),
+  );
+  return (
+    <FlatList
+      style={s.screen}
+      data={items}
+      keyExtractor={(r) => r.resource_id}
+      refreshing={q.isRefetching}
+      onRefresh={q.refetch}
+      contentContainerStyle={[s.content, { paddingTop: 0 }]}
+      ListHeaderComponent={
+        <View style={{ gap: space.md, marginBottom: space.xs }}>
+          <View style={[s.row, { flexWrap: "wrap" }]}>
+            <View style={{ gap: 2, flexShrink: 1 }}>
+              <Text style={s.h2}>Resources</Text>
+              <Text style={s.muted}>
+                {q.data
+                  ? `${q.data.filter((r) => r.active).length} active · ${q.data.filter((r) => !r.active).length} inactive`
+                  : "Seats, rooms and compute pools"}
+              </Text>
+            </View>
+            <Button
+              title="New resource"
+              icon="add"
+              size="sm"
+              onPress={() => router.push("/manage/new" as never)}
+            />
+          </View>
+          {q.isError && (
+            <ErrorBox message={explain(q.error)} onRetry={q.refetch} />
+          )}
+        </View>
+      }
+      ListEmptyComponent={
+        q.isLoading ? (
+          <Loading label="Loading resources…" />
+        ) : q.isError ? undefined : (
+          <EmptyState
+            icon="cube-outline"
+            title="No resources yet"
+            message="Create the first seat, room or compute pool students can book."
+          />
+        )
+      }
+      renderItem={({ item: r }) => (
+        <Card
+          onPress={() => router.push(`/manage/${r.resource_id}` as never)}
+          style={!r.active ? { opacity: 0.7 } : undefined}
+        >
+          <View style={[s.hstack, { gap: space.md }]}>
+            <TypeIcon type={r.type} />
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={s.title} numberOfLines={1}>
+                {r.name}
+              </Text>
+              <View style={[s.wrap, { gap: 6 }]}>
+                <Tag label={TYPE_LABEL[r.type]} />
+                {r.type !== "SEAT" && (
+                  <Tag icon="people-outline" label={String(r.capacity)} />
+                )}
+                <Tag
+                  icon="time-outline"
+                  label={`${hhmm(r.open_time)}–${hhmm(r.close_time)}`}
+                />
+                {!r.active && (
+                  <Tag icon="pause-circle-outline" label="Inactive" />
+                )}
+                {(r.eligible_groups ?? []).length > 0 && (
+                  <Tag
+                    icon="lock-closed-outline"
+                    label={(r.eligible_groups ?? []).map(groupLabel).join(", ")}
+                  />
+                )}
+              </View>
+            </View>
+            <Icon name="chevron-forward" size={20} color={colors.faint} />
+          </View>
+        </Card>
+      )}
+    />
+  );
+}
+
+type Mode = "insights" | "resources";
+
+export default function Admin() {
+  const [mode, setMode] = useState<Mode>("insights");
+  return (
+    <View style={s.screen}>
+      <View
+        style={{
+          paddingHorizontal: space.lg,
+          paddingTop: space.lg,
+          paddingBottom: mode === "resources" ? space.md : 0,
+          maxWidth: MAX_WIDTH,
+          width: "100%",
+          alignSelf: "center",
+        }}
+      >
+        <Segmented<Mode>
+          options={[
+            ["insights", "Insights"],
+            ["resources", "Resources"],
+          ]}
+          value={mode}
+          onChange={setMode}
+        />
+      </View>
+      {mode === "insights" ? <Insights /> : <ManageResources />}
+    </View>
   );
 }
