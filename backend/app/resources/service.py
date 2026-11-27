@@ -66,6 +66,7 @@ async def create(conn: asyncpg.Connection, body: ResourceCreate) -> asyncpg.Reco
         )
         for g in set(cfg["eligible_groups"]):
             await conn.execute("INSERT INTO resource_eligibility VALUES ($1, $2)", rid, g)
+        await _emit(conn, rid, "created")
     return await repo.get(conn, rid)
 
 
@@ -114,6 +115,7 @@ async def update(conn: asyncpg.Connection, rid: UUID, body: ResourceUpdate) -> a
                 await conn.execute("DELETE FROM resource_eligibility WHERE resource_id = $1", rid)
                 for g in set(changes["eligible_groups"]):
                     await conn.execute("INSERT INTO resource_eligibility VALUES ($1, $2)", rid, g)
+            await _emit(conn, rid, "updated")
     except asyncpg.CheckViolationError:  # a concurrent booking raised usage past the new capacity
         raise ApiError(
             409, "CAPACITY_UNAVAILABLE", "capacity changed concurrently; retry"
@@ -142,6 +144,7 @@ async def deactivate(conn: asyncpg.Connection, rid: UUID) -> asyncpg.Record:
             "UPDATE resources SET active = false, version = version + 1 WHERE resource_id = $1",
             rid,
         )
+        await _emit(conn, rid, "deactivated")
     return await repo.get(conn, rid)
 
 
