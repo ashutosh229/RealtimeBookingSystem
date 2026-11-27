@@ -86,5 +86,3 @@ async def run_locked(
         return await run_cycle(conn, resource_ids)
     finally:
         await conn.execute("SELECT pg_advisory_unlock(hashtext($1))", SWEEPER_LOCK)
-
-
