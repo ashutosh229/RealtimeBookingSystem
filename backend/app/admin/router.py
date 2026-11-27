@@ -9,6 +9,7 @@ from app.admin import attempts, metrics
 from app.admin.schemas import AttemptPage, RejectionSummaryOut
 from app.allocation import ChanceSummaryOut, chance, queries
 from app.allocation.schemas import AllocationPage, MetricsSummaryOut, WaitlistPage
+from app.availability import cache as availability_cache
 from app.booking import service as booking_service
 from app.identity.deps import require_admin
 from app.platform import clock
@@ -28,7 +29,9 @@ async def deactivate_resource(
 ):
     if body and body.force:
         return dict(await booking_service.force_deactivate(conn, admin, resource_id))
-    return dict(await resources_service.deactivate(conn, resource_id))
+    out = dict(await resources_service.deactivate(conn, resource_id))
+    await availability_cache.bump(resource_id)  # after commit, so no stale view outlives it
+    return out
 
 
 @router.get("/waitlists", response_model=WaitlistPage, dependencies=[Depends(require_admin)])
