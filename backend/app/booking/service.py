@@ -477,5 +477,3 @@ async def complete_finished(conn, now, resource_ids=None, batch: int = 500) -> i
         total += n
         if n < batch:
             return total
-
-
