@@ -16,10 +16,8 @@ HTTP = {"get", "post", "put", "patch", "delete"}
 # Documented in the contract but not built yet. Shrinks as phases land; a stale entry fails the test.
 NOT_YET = set()
 
-# Documented query params not built yet (geo search and availability filter arrive in Phase 6).
-PARAMS_NOT_YET = {
-    ("get", "/resources"): {"available_from", "available_to", "lat", "lon", "radius_m"}
-}
+# Documented query params not built yet. Empty now that geo search and the free-window filter exist.
+PARAMS_NOT_YET: dict[tuple[str, str], set[str]] = {}
 
 SCHEMA_PAIRS = {  # yaml schema -> pydantic model
     "RegisterRequest": "RegisterRequest",
@@ -64,18 +62,15 @@ def app_openapi() -> dict:
 
 
 def app_ops() -> set:
-    from app.main import app
-
-    out = set()
-    for r in app.routes:
-        path = getattr(r, "path", "")
-        if path.startswith("/v1/"):
-            out |= {
-                (m.lower(), path[len("/v1") :])
-                for m in getattr(r, "methods", set())
-                if m.lower() in HTTP
-            }
-    return out
+    # Read the app's own OpenAPI paths, not app.routes: newer FastAPI keeps included routers as
+    # private wrapper objects there instead of flattening them into routes.
+    return {
+        (m, path[len("/v1") :])
+        for path, item in app_openapi()["paths"].items()
+        if path.startswith("/v1/")
+        for m in item
+        if m in HTTP
+    }
 
 
 def deref(root: dict, node: dict) -> dict:
