@@ -21,8 +21,20 @@ echo "deploying $VERSION with $N API replica(s)"
 ./deploy/native/services.sh start
 [ -x .venv/bin/python ] || python3.12 -m venv .venv
 .venv/bin/pip install -q --upgrade pip
-.venv/bin/pip install -q -r backend/requirements.txt
+.venv/bin/pip install -q -r backend/requirements.txt -c backend/constraints.txt
 ./deploy/native/run.sh alembic upgrade head
+
+# Web app: rebuilt here when Node 20+ is installed, otherwise the current ./web keeps being served
+# (build it on a laptop with deploy/native/push-web.sh). SKIP_WEB=1 skips the build.
+PUBLIC_URL="$( (set -a; . ./.env.prod; echo "${CORS_ORIGINS%%,*}") )"
+NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+if [ "${SKIP_WEB:-0}" = 1 ]; then
+  echo "web: skipped (SKIP_WEB=1)"
+elif command -v npm >/dev/null && [ "$NODE_MAJOR" -ge 20 ]; then
+  ./deploy/native/build-web.sh "$PUBLIC_URL" "$ROOT/web" || echo "web: BUILD FAILED, still serving the previous build"
+else
+  echo "web: Node 20+ not found on this machine; serving the existing ./web (use deploy/native/push-web.sh)"
+fi
 
 SERVERS=""; for i in $(seq 1 "$N"); do SERVERS="$SERVERS    server 127.0.0.1:800$i max_fails=2 fail_timeout=5s;"$'\n'; done
 cat > "$RUN/nginx.conf" <<EOF
@@ -110,6 +122,12 @@ stopwaitsecs=30
 redirect_stderr=true
 stdout_logfile=$RUN/logs/consumers.log
 
+[program:backup]
+command=$ROOT/deploy/native/backup-loop.sh
+autorestart=true
+redirect_stderr=true
+stdout_logfile=$RUN/logs/backup.log
+
 [program:nginx]
 command=/usr/sbin/nginx -e $RUN/logs/nginx_boot.log -p $RUN/nginx -c $RUN/nginx.conf -g "daemon off;"
 autorestart=true
@@ -117,9 +135,25 @@ redirect_stderr=true
 stdout_logfile=$RUN/logs/nginx.log
 EOF
 
+# The GitHub Actions runner (deploy/native/runner.sh) lives under supervisord too, so it survives like the rest.
+if [ -x "$HOME/actions-runner/run.sh" ] && [ -f "$HOME/actions-runner/.runner" ]; then
+  cat >> "$RUN/supervisord.conf" <<EOF
+
+[program:runner]
+command=$HOME/actions-runner/run.sh
+directory=$HOME/actions-runner
+autorestart=true
+stopwaitsecs=60
+redirect_stderr=true
+stdout_logfile=$RUN/logs/runner.log
+EOF
+fi
+
 SC="supervisorctl -c $RUN/supervisord.conf"
 if [ -S "$RUN/supervisor.sock" ] && $SC pid >/dev/null 2>&1; then
-  $SC reread >/dev/null; $SC update >/dev/null; $SC restart all >/dev/null
+  # Not "restart all": a deploy started from GitHub runs inside the runner, which must keep running.
+  $SC reread >/dev/null; $SC update >/dev/null
+  $SC restart "api:*" worker relay consumers backup nginx >/dev/null
 else
   supervisord -c "$RUN/supervisord.conf"
 fi
