@@ -42,6 +42,11 @@ function Gate() {
           name="booking/[id]"
           options={{ title: "Booking details" }}
         />
+        <Stack.Screen name="manage/new" options={{ title: "New resource" }} />
+        <Stack.Screen
+          name="manage/[id]"
+          options={{ title: "Manage resource" }}
+        />
       </Stack>
       <Banner />
     </>
