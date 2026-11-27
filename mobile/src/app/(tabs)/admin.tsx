@@ -1,20 +1,25 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { RefreshControl, ScrollView, Text, View } from "react-native";
 import {
   adminChance,
   adminRejections,
   adminSummary,
 } from "../../api/endpoints";
 import { explain } from "../../lib/errors";
-import { Card, Note, colors, s } from "../../ui";
+import {
+  Card,
+  ErrorBox,
+  Icon,
+  Loading,
+  Segmented,
+  colors,
+  groupLabel,
+  radius,
+  s,
+  space,
+  type IconName,
+} from "../../ui";
 
 const pct = (x?: number | null) => `${((x ?? 0) * 100).toFixed(1)}%`;
 const n2 = (x?: number | null) => (x ?? 0).toFixed(2);
@@ -24,42 +29,187 @@ function dur(sec?: number | null) {
   if (v < 5400) return `${Math.round(v / 60)} min`;
   return `${(v / 3600).toFixed(1)} h`;
 }
+const REASONS: Record<string, string> = {
+  CAPACITY_UNAVAILABLE: "Full, no waitlist",
+  USER_LIMIT_REACHED: "User limit reached",
+  NOT_ELIGIBLE: "Not eligible",
+  OUT_OF_HOURS: "Outside opening hours",
+  OUT_OF_HORIZON: "Too far ahead",
+  INVALID_INTERVAL: "Invalid time",
+  QUANTITY_OUT_OF_RANGE: "Quantity not allowed",
+  RESOURCE_INACTIVE: "Resource inactive",
+  RATE_LIMITED: "Rate limited (surge)",
+  SERVICE_BUSY: "Server busy",
+};
 
-function Stat({ label, value }: { label: string; value: string }) {
+/** One headline number. `tone` colours the value by whether it is good. */
+function Kpi({
+  icon,
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  icon: IconName;
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "good" | "warn" | "bad";
+}) {
+  const fg =
+    tone === "good"
+      ? colors.ok
+      : tone === "warn"
+        ? colors.warn
+        : tone === "bad"
+          ? colors.danger
+          : colors.text;
   return (
-    <View style={{ minWidth: 104, gap: 2 }}>
-      <Text style={{ fontSize: 20, fontWeight: "700", color: colors.text }}>
+    <View
+      style={{
+        flexGrow: 1,
+        flexBasis: 150,
+        padding: space.md,
+        borderRadius: radius.md,
+        backgroundColor: "#F8FAFC",
+        gap: 4,
+      }}
+    >
+      <View style={[s.hstack, { gap: 6 }]}>
+        <Icon name={icon} size={15} color={colors.muted} />
+        <Text style={[s.muted, { fontSize: 13 }]}>{label}</Text>
+      </View>
+      <Text
+        style={{
+          fontSize: 24,
+          fontWeight: "800",
+          color: fg,
+          letterSpacing: -0.3,
+        }}
+      >
         {value}
       </Text>
-      <Text style={s.muted}>{label}</Text>
+      {hint && (
+        <Text style={{ fontSize: 12, color: colors.faint }}>{hint}</Text>
+      )}
     </View>
   );
 }
 
-function Bars({ values, labels }: { values: number[]; labels?: string[] }) {
+function Panel({
+  icon,
+  title,
+  subtitle,
+  children,
+}: {
+  icon: IconName;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card style={{ gap: space.md }}>
+      <View style={[s.hstack, { gap: space.md, alignItems: "flex-start" }]}>
+        <View
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: radius.sm,
+            backgroundColor: colors.primarySoft,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Icon name={icon} size={18} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.title}>{title}</Text>
+          {subtitle && (
+            <Text style={[s.muted, { fontSize: 13, lineHeight: 18 }]}>
+              {subtitle}
+            </Text>
+          )}
+        </View>
+      </View>
+      {children}
+    </Card>
+  );
+}
+
+/** Label, value and a proportional bar: for breakdowns by reason or group. */
+function BarRow({
+  label,
+  value,
+  frac,
+  color = colors.primary,
+}: {
+  label: string;
+  value: string;
+  frac: number;
+  color?: string;
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <View style={s.row}>
+        <Text style={[s.body, { fontSize: 14, flex: 1 }]} numberOfLines={1}>
+          {label}
+        </Text>
+        <Text style={[s.body, { fontSize: 14, fontWeight: "700" }]}>
+          {value}
+        </Text>
+      </View>
+      <View
+        style={{
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: "#EEF1F6",
+          overflow: "hidden",
+        }}
+      >
+        <View
+          style={{
+            height: 8,
+            borderRadius: 4,
+            width: `${Math.max(2, Math.min(100, frac * 100))}%`,
+            backgroundColor: color,
+          }}
+        />
+      </View>
+    </View>
+  );
+}
+
+function Histogram({
+  values,
+  labels,
+  color = colors.primary,
+}: {
+  values: number[];
+  labels: string[];
+  color?: string;
+}) {
   const max = Math.max(1, ...values);
   return (
     <View
       style={{
         flexDirection: "row",
         alignItems: "flex-end",
-        gap: 2,
-        height: 84,
+        gap: 3,
+        height: 120,
       }}
     >
       {values.map((v, i) => (
-        <View key={i} style={{ flex: 1, alignItems: "center" }}>
+        <View key={i} style={{ flex: 1, alignItems: "center", gap: 4 }}>
           <View
             style={{
               width: "100%",
-              height: Math.max(2, (v / max) * 64),
-              backgroundColor: colors.primary,
-              borderRadius: 2,
+              height: Math.max(3, (v / max) * 92),
+              backgroundColor: v ? color : colors.line,
+              borderTopLeftRadius: 4,
+              borderTopRightRadius: 4,
             }}
           />
-          <Text style={{ fontSize: 9, color: colors.muted }}>
-            {labels?.[i] ?? ""}
-          </Text>
+          <Text style={{ fontSize: 10, color: colors.faint }}>{labels[i]}</Text>
         </View>
       ))}
     </View>
@@ -89,124 +239,236 @@ export default function Admin() {
     await Promise.all([sum.refetch(), rej.refetch(), cha.refetch()]);
   };
   const firstError = sum.error ?? rej.error ?? cha.error;
+  const loading = sum.isLoading || rej.isLoading || cha.isLoading;
+
+  const jain = sum.data?.jain_index ?? 0;
+  const reasons = Object.entries(rej.data?.by_reason ?? {}).sort(
+    (a, b) => b[1] - a[1],
+  );
+  const reasonMax = Math.max(1, ...reasons.map(([, c]) => c));
 
   return (
     <ScrollView
       style={s.screen}
-      contentContainerStyle={s.content}
+      contentContainerStyle={[s.content, { paddingBottom: space.xxl }]}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={refresh} />
       }
     >
-      <View style={s.wrap}>
-        {[7, 14, 30].map((d) => (
-          <Pressable
-            key={d}
-            onPress={() => setDays(d)}
-            style={[s.chip, days === d && s.chipOn]}
-          >
-            <Text style={{ color: days === d ? "#fff" : colors.text }}>
-              {d} days
-            </Text>
-          </Pressable>
-        ))}
+      <View style={[s.row, { flexWrap: "wrap" }]}>
+        <View style={{ gap: 2, flexShrink: 1 }}>
+          <Text style={s.h2}>Allocation health</Text>
+          <Text style={s.muted}>
+            Live from the booking database · refreshes every 30 s
+          </Text>
+        </View>
+        <View style={{ minWidth: 240 }}>
+          <Segmented<number>
+            options={[
+              [7, "7 days"],
+              [14, "14 days"],
+              [30, "30 days"],
+            ]}
+            value={days}
+            onChange={setDays}
+          />
+        </View>
       </View>
-      {firstError && <Note tone="error">{explain(firstError)}</Note>}
-      {(sum.isLoading || rej.isLoading || cha.isLoading) && (
-        <ActivityIndicator />
+      {firstError && (
+        <ErrorBox message={explain(firstError)} onRetry={refresh} />
       )}
+      {loading && <Loading label="Crunching numbers…" />}
 
       {sum.data && (
-        <Card>
-          <Text style={s.title}>Utilization and waiting</Text>
-          <View style={s.wrap}>
-            <Stat label="utilization" value={pct(sum.data.utilization)} />
-            <Stat
-              label="Jain index (1 = equal)"
-              value={n2(sum.data.jain_index)}
+        <Panel
+          icon="speedometer-outline"
+          title="Utilization and waiting"
+          subtitle="How fully places are used, and how long people wait for them."
+        >
+          <View style={[s.wrap, { gap: space.sm }]}>
+            <Kpi
+              icon="pie-chart-outline"
+              label="Utilization"
+              value={pct(sum.data.utilization)}
             />
-            <Stat
-              label="on waitlists now"
+            <Kpi
+              icon="ribbon-outline"
+              label="Fairness (Jain)"
+              value={n2(jain)}
+              hint="1.00 = perfectly equal"
+              tone={jain >= 0.85 ? "good" : jain >= 0.6 ? "warn" : "bad"}
+            />
+            <Kpi
+              icon="people-outline"
+              label="On waitlists now"
               value={String(sum.data.waitlist_length ?? 0)}
             />
-            <Stat label="mean wait" value={dur(sum.data.wait_seconds?.mean)} />
-            <Stat label="p95 wait" value={dur(sum.data.wait_seconds?.p95)} />
-            <Stat label="max wait" value={dur(sum.data.wait_seconds?.max)} />
+            <Kpi
+              icon="time-outline"
+              label="Mean wait"
+              value={dur(sum.data.wait_seconds?.mean)}
+            />
+            <Kpi
+              icon="trending-up-outline"
+              label="95th pct wait"
+              value={dur(sum.data.wait_seconds?.p95)}
+            />
+            <Kpi
+              icon="alarm-outline"
+              label="Longest wait"
+              value={dur(sum.data.wait_seconds?.max)}
+            />
           </View>
-        </Card>
+        </Panel>
       )}
 
       {rej.data && (
-        <Card>
-          <Text style={s.title}>Who gets rejected, and why</Text>
-          <View style={s.wrap}>
-            <Stat label="attempts" value={String(rej.data.attempts)} />
-            <Stat label="confirmed" value={String(rej.data.confirmed)} />
-            <Stat label="waitlisted" value={String(rej.data.waitlisted)} />
-            <Stat
-              label="rejected"
-              value={`${rej.data.rejected} (${pct(rej.data.rejection_rate)})`}
+        <Panel
+          icon="shield-outline"
+          title="Who gets turned away, and why"
+          subtitle="Every booking attempt in the window, including ones that were refused."
+        >
+          <View style={[s.wrap, { gap: space.sm }]}>
+            <Kpi
+              icon="enter-outline"
+              label="Attempts"
+              value={String(rej.data.attempts)}
             />
-            <Stat
-              label="users rejected"
-              value={String(rej.data.users_rejected)}
+            <Kpi
+              icon="checkmark-circle-outline"
+              label="Confirmed"
+              value={String(rej.data.confirmed)}
+              tone="good"
+            />
+            <Kpi
+              icon="hourglass-outline"
+              label="Waitlisted"
+              value={String(rej.data.waitlisted)}
+            />
+            <Kpi
+              icon="close-circle-outline"
+              label="Rejected"
+              value={String(rej.data.rejected)}
+              hint={`${pct(rej.data.rejection_rate)} of attempts · ${rej.data.users_rejected} users`}
+              tone={
+                rej.data.rejection_rate > 0.3
+                  ? "bad"
+                  : rej.data.rejection_rate > 0.1
+                    ? "warn"
+                    : undefined
+              }
             />
           </View>
-          {Object.entries(rej.data.by_reason ?? {}).map(([reason, count]) => (
-            <Text key={reason} style={s.muted}>
-              {reason}: {count}
-            </Text>
-          ))}
-          <Text style={[s.title, { marginTop: 8 }]}>By user group</Text>
-          {(rej.data.by_group ?? []).map((g) => (
-            <Text key={g.user_group} style={s.muted}>
-              {g.user_group}: {g.rejected} of {g.attempts} rejected (
-              {pct(g.rejection_rate)})
-            </Text>
-          ))}
-          <Text style={[s.title, { marginTop: 8 }]}>
-            Rejections by hour (UTC)
-          </Text>
-          <Bars
-            values={rej.data.by_hour_utc ?? []}
-            labels={(rej.data.by_hour_utc ?? []).map((_, i) =>
-              i % 3 === 0 ? String(i) : "",
-            )}
-          />
-        </Card>
+          {reasons.length > 0 && (
+            <View style={{ gap: space.md }}>
+              <Text style={s.section}>By reason</Text>
+              {reasons.map(([reason, count]) => (
+                <BarRow
+                  key={reason}
+                  label={REASONS[reason] ?? reason}
+                  value={String(count)}
+                  frac={count / reasonMax}
+                  color={colors.danger}
+                />
+              ))}
+            </View>
+          )}
+          {(rej.data.by_group ?? []).length > 0 && (
+            <View style={{ gap: space.md }}>
+              <Text style={s.section}>Rejection rate by group</Text>
+              {rej.data.by_group.map((g) => (
+                <BarRow
+                  key={g.user_group}
+                  label={`${groupLabel(g.user_group)} · ${g.rejected}/${g.attempts}`}
+                  value={pct(g.rejection_rate)}
+                  frac={g.rejection_rate}
+                  color={colors.warn}
+                />
+              ))}
+            </View>
+          )}
+          <View style={{ gap: space.sm }}>
+            <Text style={s.section}>Rejections by hour of day (UTC)</Text>
+            <Histogram
+              values={rej.data.by_hour_utc ?? []}
+              labels={(rej.data.by_hour_utc ?? []).map((_, i) =>
+                i % 3 === 0 ? String(i) : "",
+              )}
+              color={colors.danger}
+            />
+          </View>
+        </Panel>
       )}
 
       {cha.data && (
-        <Card>
-          <Text style={s.title}>Chance of getting a seat, per user</Text>
-          <Note>
-            Share of each user's attempts that ended with a seat (immediately or
-            by waitlist promotion).
-          </Note>
-          <View style={s.wrap}>
-            <Stat label="mean" value={pct(cha.data.chance_mean)} />
-            <Stat label="median" value={pct(cha.data.chance_median)} />
-            <Stat label="10th percentile" value={pct(cha.data.chance_p10)} />
-            <Stat label="lowest" value={pct(cha.data.chance_min)} />
-            <Stat label="Gini (0 = equal)" value={n2(cha.data.chance_gini)} />
-            <Stat
-              label="users below half the mean"
+        <Panel
+          icon="dice-outline"
+          title="Each person's chance of getting a place"
+          subtitle="Share of each user's attempts that ended with a place, straight away or from the waitlist."
+        >
+          <View style={[s.wrap, { gap: space.sm }]}>
+            <Kpi
+              icon="analytics-outline"
+              label="Average chance"
+              value={pct(cha.data.chance_mean)}
+            />
+            <Kpi
+              icon="git-commit-outline"
+              label="Median"
+              value={pct(cha.data.chance_median)}
+            />
+            <Kpi
+              icon="arrow-down-outline"
+              label="Bottom 10%"
+              value={pct(cha.data.chance_p10)}
+            />
+            <Kpi
+              icon="remove-circle-outline"
+              label="Lowest"
+              value={pct(cha.data.chance_min)}
+            />
+            <Kpi
+              icon="ribbon-outline"
+              label="Inequality (Gini)"
+              value={n2(cha.data.chance_gini)}
+              hint="0.00 = everyone equal"
+              tone={
+                cha.data.chance_gini <= 0.2
+                  ? "good"
+                  : cha.data.chance_gini <= 0.4
+                    ? "warn"
+                    : "bad"
+              }
+            />
+            <Kpi
+              icon="alert-circle-outline"
+              label="Left behind"
               value={pct(cha.data.chance_low_share)}
+              hint="below half the average chance"
             />
           </View>
-          <Text style={[s.title, { marginTop: 8 }]}>
-            Users by chance (0–100% in tens)
-          </Text>
-          <Bars
-            values={cha.data.histogram ?? []}
-            labels={(cha.data.histogram ?? []).map((_, i) => `${i * 10}`)}
-          />
-          {(cha.data.by_group ?? []).map((g) => (
-            <Text key={g.user_group} style={s.muted}>
-              {g.user_group}: {g.users} users, mean chance {pct(g.mean_chance)}
-            </Text>
-          ))}
-        </Card>
+          <View style={{ gap: space.sm }}>
+            <Text style={s.section}>Users by chance of success</Text>
+            <Histogram
+              values={cha.data.histogram ?? []}
+              labels={(cha.data.histogram ?? []).map((_, i) => `${i * 10}%`)}
+            />
+          </View>
+          {(cha.data.by_group ?? []).length > 0 && (
+            <View style={{ gap: space.md }}>
+              <Text style={s.section}>Average chance by group</Text>
+              {cha.data.by_group.map((g) => (
+                <BarRow
+                  key={g.user_group}
+                  label={`${groupLabel(g.user_group)} · ${g.users} users`}
+                  value={pct(g.mean_chance)}
+                  frac={g.mean_chance}
+                  color={colors.ok}
+                />
+              ))}
+            </View>
+          )}
+        </Panel>
       )}
     </ScrollView>
   );
