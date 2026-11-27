@@ -17,7 +17,7 @@ Design: see the HLD/LLD document. Targets: Android + web (iOS out of scope).
 
 ## Dev
     cd backend && python -m venv .venv && source .venv/bin/activate
-    pip install -r requirements-dev.txt
+    pip install -r requirements-dev.txt -c constraints.txt
     make lint test
 
 ## Workflow
