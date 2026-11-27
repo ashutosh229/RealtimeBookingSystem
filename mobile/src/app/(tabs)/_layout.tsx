@@ -69,8 +69,8 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="admin"
         options={{
-          title: "Insights",
-          headerTitle: "Fairness insights",
+          title: "Admin",
+          headerTitle: "Administration",
           href: isAdmin ? undefined : null,
           tabBarIcon: icon("stats-chart-outline", "stats-chart"),
         }}
