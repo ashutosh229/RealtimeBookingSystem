@@ -1,5 +1,7 @@
 import base64
 import json
+import math
+from datetime import datetime
 from uuid import UUID
 
 import asyncpg
@@ -15,6 +17,17 @@ SELECT r.resource_id, r.type::text AS type, r.name, r.capacity, r.slot_minutes, 
                  FROM resource_eligibility e WHERE e.resource_id = r.resource_id), '{}') AS eligible_groups
 FROM resources r
 """
+
+# Same columns plus the great-circle distance in metres from a point (Earth radius 6 371 km).
+_SELECT_DIST = _SELECT.replace("FROM resources r", ", __DIST__ AS distance_m FROM resources r")
+
+
+def _haversine(lat: str, lon: str) -> str:
+    return (
+        "2 * 6371000 * asin(sqrt("
+        f"power(sin(radians(r.lat - {lat}) / 2), 2)"
+        f" + cos(radians({lat})) * cos(radians(r.lat)) * power(sin(radians(r.lon - {lon}) / 2), 2)))"
+    )
 
 
 def encode_cursor(name: str, rid: UUID) -> str:
@@ -55,7 +68,11 @@ async def list_page(
     eligible_only: bool,
     limit: int,
     cursor: str | None,
+    near: tuple[float, float, int] | None = None,
+    free_between: tuple[datetime, datetime] | None = None,
 ) -> tuple[list[asyncpg.Record], str | None]:
+    """near = (lat, lon, radius_m): only resources within the radius, nearest first, one page (no cursor).
+    free_between = (from, to): only resources with no fully booked slot overlapping [from, to)."""
     args: list = []
     where: list[str] = []
 
@@ -75,6 +92,28 @@ async def list_page(
             " OR EXISTS (SELECT 1 FROM resource_eligibility e WHERE e.resource_id = r.resource_id"
             f" AND e.user_group = {p(user['user_group'])}))"
         )
+    if free_between:
+        lo, hi = free_between
+        where.append(
+            "NOT EXISTS (SELECT 1 FROM slot_usage s WHERE s.resource_id = r.resource_id"
+            " AND s.used >= s.capacity"
+            f" AND s.slot_start < {p(hi)}"
+            f" AND s.slot_start + make_interval(mins => r.slot_minutes) > {p(lo)})"
+        )
+    if near:
+        # Campus scale needs no PostGIS (HLD section 29 fallback): a bounding box narrows the rows,
+        # then the haversine distance filters and orders them exactly.
+        lat, lon, radius = near
+        dlat = radius / 111_320
+        dlon = radius / (111_320 * max(math.cos(math.radians(lat)), 0.01))
+        dist = _haversine(p(lat), p(lon))
+        where.append("r.lat IS NOT NULL AND r.lon IS NOT NULL")
+        where.append(f"r.lat BETWEEN {p(lat - dlat)} AND {p(lat + dlat)}")
+        where.append(f"r.lon BETWEEN {p(lon - dlon)} AND {p(lon + dlon)}")
+        sql = "SELECT * FROM (" + _SELECT_DIST.replace("__DIST__", dist)
+        sql += (" WHERE " + " AND ".join(where) if where else "") + ") x"
+        sql += f" WHERE x.distance_m <= {p(radius)} ORDER BY x.distance_m, x.name LIMIT {p(limit)}"
+        return await conn.fetch(sql, *args), None
     if cursor:
         name, rid = decode_cursor(cursor)
         where.append(f"(r.name, r.resource_id) > ({p(name)}, {p(rid)})")
