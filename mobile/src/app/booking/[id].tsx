@@ -17,14 +17,12 @@ import {
   InfoRow,
   Loading,
   SectionTitle,
-  STATUS_META,
   TYPE_LABEL,
   TypeIcon,
-  colors,
   radius,
-  s,
   space,
 } from "../../ui";
+import { useTheme } from "../../theme";
 
 // Reason codes written by the backend in booking_status_history.
 const REASON: Record<string, string> = {
@@ -36,6 +34,7 @@ const REASON: Record<string, string> = {
 };
 
 export default function BookingScreen() {
+  const { colors, s, statusMeta } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
@@ -139,7 +138,7 @@ export default function BookingScreen() {
         <Card
           style={{
             backgroundColor: colors.warnSoft,
-            borderColor: "#FDE68A",
+            borderColor: colors.warnBorderSoft,
             gap: space.sm,
           }}
         >
@@ -177,7 +176,7 @@ export default function BookingScreen() {
             </View>
           </View>
           {b.expires_at && (
-            <Text style={[s.muted, { color: "#92400E" }]}>
+            <Text style={[s.muted, { color: colors.warnText }]}>
               The waitlist closes at {fmtTime(b.expires_at, tz)}.
             </Text>
           )}
@@ -246,7 +245,7 @@ export default function BookingScreen() {
         />
       )}
       {canCancel && confirm && (
-        <Card style={{ borderColor: "#FECACA", gap: space.md }}>
+        <Card style={{ borderColor: colors.dangerBorder, gap: space.md }}>
           <Text style={s.title}>
             {waiting ? "Leave the waitlist?" : "Cancel this booking?"}
           </Text>
@@ -287,7 +286,7 @@ export default function BookingScreen() {
           <SectionTitle title="Activity" />
           <Card>
             {history.map((h, i) => {
-              const m = STATUS_META[h.to_status] ?? STATUS_META.REQUESTED;
+              const m = statusMeta[h.to_status] ?? statusMeta.REQUESTED;
               const last = i === history.length - 1;
               return (
                 <View
