@@ -22,9 +22,9 @@ import {
   SectionTitle,
   Segmented,
   TYPE_LABEL,
-  s,
   space,
 } from "../ui";
+import { useTheme } from "../theme";
 
 const SLOT_CHOICES = [15, 30, 60, 120] as const;
 const POLICIES: [Policy, string][] = [
@@ -159,6 +159,7 @@ export function ResourceForm({
   serverError?: string | null;
   onSubmit: (body: ResourceCreate | ResourceUpdate) => void;
 }) {
+  const { s } = useTheme();
   const editing = !!resource;
   const [v, setV] = useState<Values>(() => initial(resource));
   const [tried, setTried] = useState(false);
