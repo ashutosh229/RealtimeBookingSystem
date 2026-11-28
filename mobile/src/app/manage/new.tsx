@@ -5,9 +5,11 @@ import { createResource } from "../../api/endpoints";
 import type { ResourceCreate } from "../../api/generated";
 import { ResourceForm } from "../../admin/ResourceForm";
 import { explain } from "../../lib/errors";
-import { s, space } from "../../ui";
+import { space } from "../../ui";
+import { useTheme } from "../../theme";
 
 export default function NewResource() {
+  const { s } = useTheme();
   const router = useRouter();
   const qc = useQueryClient();
   const create = useMutation({
