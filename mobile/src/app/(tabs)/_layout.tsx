@@ -3,7 +3,8 @@ import { Tabs } from "expo-router";
 import type { ColorValue } from "react-native";
 import { useAuth } from "../../auth/AuthContext";
 import { useNotifications } from "../../notifications/NotificationsContext";
-import { colors, headerOptions, type IconName } from "../../ui";
+import { type IconName } from "../../ui";
+import { useTheme } from "../../theme";
 
 const icon =
   (name: IconName, active: IconName) =>
@@ -24,6 +25,7 @@ const icon =
   );
 
 export default function TabsLayout() {
+  const { colors, headerOptions } = useTheme();
   const { unread } = useNotifications();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
