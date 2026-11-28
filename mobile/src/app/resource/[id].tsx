@@ -13,11 +13,14 @@ import { explain } from "../../lib/errors";
 import {
   addDays,
   fmtDay,
+  fmtMinutes,
   fmtTime,
   hhmm,
+  openState,
   ymdInZone,
   ymdParts,
 } from "../../lib/time";
+import { useNow } from "../../lib/useNow";
 import {
   Button,
   Callout,
@@ -29,7 +32,9 @@ import {
   Loading,
   MAX_WIDTH,
   POLICY_TEXT,
+  ProgressBar,
   SectionTitle,
+  StatusDot,
   TYPE_LABEL,
   TypeIcon,
   colors,
@@ -37,10 +42,53 @@ import {
   radius,
   s,
   space,
+  type IconName,
 } from "../../ui";
 
 type Sel = { from: number; to: number } | null;
-const DAYS = 14;
+
+/** Plain-language booking rules, so nobody learns them from a refusal. */
+function Rules({
+  horizon,
+  maxActive,
+  notice,
+}: {
+  horizon: number;
+  maxActive: number;
+  notice: number;
+}) {
+  const rows: [IconName, string][] = [
+    ["calendar-outline", `You can book up to ${horizon} days ahead.`],
+    [
+      "layers-outline",
+      maxActive === 1
+        ? "You can hold 1 active booking here at a time."
+        : `You can hold up to ${maxActive} active bookings here at a time.`,
+    ],
+    [
+      "close-circle-outline",
+      notice === 0
+        ? "Cancel any time before it starts. Please cancel early so someone else can use it."
+        : `Free cancellation until ${fmtMinutes(notice)} before the start.`,
+    ],
+  ];
+  return (
+    <Card style={{ gap: space.sm }}>
+      <Text style={s.title}>Good to know</Text>
+      {rows.map(([icon, text]) => (
+        <View
+          key={text}
+          style={[s.hstack, { alignItems: "flex-start", gap: space.md }]}
+        >
+          <Icon name={icon} size={18} color={colors.primary} />
+          <Text style={[s.body, { flex: 1, fontSize: 14, lineHeight: 20 }]}>
+            {text}
+          </Text>
+        </View>
+      ))}
+    </Card>
+  );
+}
 
 function Legend() {
   const item = (bg: string, border: string, label: string) => (
@@ -81,6 +129,7 @@ export default function ResourceScreen() {
   const tz = r?.timezone ?? "UTC";
   const today = r ? ymdInZone(new Date(), tz) : "";
   const [offset, setOffset] = useState(0);
+  const clock = useNow();
   const day = today ? addDays(today, offset) : "";
   const availQ = useQuery({
     queryKey: ["availability", id, day],
@@ -100,7 +149,7 @@ export default function ResourceScreen() {
     setErr(null);
   }, [day]);
 
-  const now = Date.now();
+  const now = clock.getTime();
   const chosen = sel ? slots.slice(sel.from, sel.to + 1) : [];
   const anyFull = chosen.some((sl) => sl.available < qty);
   const endIso =
@@ -115,6 +164,9 @@ export default function ResourceScreen() {
     slots.every((sl) => new Date(sl.start_time).getTime() <= now);
   const freeCount = slots.filter(
     (sl) => new Date(sl.start_time).getTime() > now && sl.available >= qty,
+  ).length;
+  const futureCount = slots.filter(
+    (sl) => new Date(sl.start_time).getTime() > now,
   ).length;
 
   function tap(i: number) {
@@ -177,6 +229,9 @@ export default function ResourceScreen() {
     );
 
   const unit = r.type === "COMPUTE_POOL" ? "units" : "seats";
+  // Today plus the booking horizon (bookings may start up to that many days ahead).
+  const DAYS = Math.min(r.booking_horizon_days, 30) + 1;
+  const st = openState(r.open_time, r.close_time, tz, clock);
 
   return (
     <View style={s.screen}>
@@ -185,9 +240,10 @@ export default function ResourceScreen() {
         <Card>
           <View style={[s.hstack, { gap: space.md }]}>
             <TypeIcon type={r.type} size={52} />
-            <View style={{ flex: 1, gap: 2 }}>
+            <View style={{ flex: 1, gap: 4 }}>
               <Text style={s.h2}>{r.name}</Text>
               <Text style={s.muted}>{TYPE_LABEL[r.type]}</Text>
+              <StatusDot on={st.open} label={st.label} />
             </View>
           </View>
           <View style={{ marginTop: space.sm }}>
@@ -216,6 +272,12 @@ export default function ResourceScreen() {
             />
           </View>
         </Card>
+
+        <Rules
+          horizon={r.booking_horizon_days}
+          maxActive={r.max_active_per_user}
+          notice={r.min_cancel_notice_minutes}
+        />
 
         <SectionTitle title="Choose a day" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -316,7 +378,7 @@ export default function ResourceScreen() {
             availQ.data ? (
               <Text style={[s.muted, { fontSize: 12 }]}>
                 {freeCount} free · updated{" "}
-                {new Date(availQ.data.as_of).toLocaleTimeString([], {
+                {new Date(availQ.data.as_of).toLocaleTimeString("en-GB", {
                   hour: "2-digit",
                   minute: "2-digit",
                 })}
@@ -324,9 +386,23 @@ export default function ResourceScreen() {
             ) : undefined
           }
         />
-        <Text style={[s.muted, { marginTop: -4 }]}>
+        {futureCount > 0 && (
+          <View style={{ gap: 6 }}>
+            <Text style={[s.body, { fontSize: 14 }]}>
+              <Text style={{ fontWeight: "700" }}>{freeCount}</Text> of{" "}
+              {futureCount} remaining times free
+              {qty > 1 ? ` for ${qty} ${unit}` : ""}
+            </Text>
+            <ProgressBar
+              value={freeCount / futureCount}
+              color={freeCount / futureCount < 0.25 ? colors.warn : "#10B981"}
+            />
+          </View>
+        )}
+        <Text style={[s.muted, { marginTop: 2 }]}>
           Tap a time, then tap the next one to make it longer (up to{" "}
-          {r.max_slots_per_booking} slots).
+          {r.max_slots_per_booking} slots,{" "}
+          {fmtMinutes(r.max_slots_per_booking * r.slot_minutes)}).
         </Text>
         <Legend />
         {availQ.isLoading && <Loading />}
