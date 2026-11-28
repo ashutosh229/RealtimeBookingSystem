@@ -8,7 +8,6 @@ import argparse
 import json
 
 from _common import aggregate, git_sha, make_out_dir, write_csv
-
 from app.allocation.admission import Chain, CreditWallet, QueueCap, TokenBucket
 from app.allocation.fair_share import FairSharePolicy
 from app.allocation.fifo import FifoPolicy

@@ -16,15 +16,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from app.allocation.fair_share_q import FairShareQueuePolicy  # noqa: E402
-from app.allocation.metrics import mean_ci95  # noqa: E402
-from app.allocation.registry import POLICIES  # noqa: E402
+from app.allocation.fair_share_q import FairShareQueuePolicy
+from app.allocation.metrics import mean_ci95
+from app.allocation.registry import POLICIES
 from app.allocation.simulator import (
     SimConfig,
     generate_trace,
     heavy_set,
     simulate,
-)  # noqa: E402
+)
 
 KEYS = [
     "jain_alloc",

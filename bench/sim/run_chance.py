@@ -7,7 +7,6 @@ import argparse
 import json
 
 from _common import aggregate, git_sha, make_out_dir, write_csv
-
 from app.allocation.fair_share import FairSharePolicy
 from app.allocation.fair_share_decay import FairShareDecayPolicy
 from app.allocation.fair_share_q import FairShareQueuePolicy

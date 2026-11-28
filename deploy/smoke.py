@@ -37,7 +37,7 @@ def check(ok, label, extra=""):
 
 
 def parse(ts):
-    return dt.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    return dt.datetime.fromisoformat(ts)
 
 
 st, _, _ = call("GET", "/healthz")

@@ -34,7 +34,7 @@ from bench_cache import (
     login,
     make_users,
     pct,
-)  # noqa: E402
+)
 
 DSN = os.environ.get("BENCH_DB_DSN", "postgresql://rtbs:change_me@localhost:5432/rtbs")
 INV = (

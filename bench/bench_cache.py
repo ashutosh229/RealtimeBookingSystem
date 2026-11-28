@@ -91,17 +91,17 @@ async def create_room(c, admin) -> str:
     r = await c.post(
         "/admin/resources",
         headers=admin,
-        json=dict(
-            name=f"bench-cache-{uuid.uuid4().hex[:8]}",
-            type="ROOM",
-            capacity=1000,
-            slot_minutes=60,
-            open_time="00:00",
-            close_time="23:59",
-            timezone="UTC",
-            max_slots_per_booking=4,
-            max_quantity_per_booking=1,
-        ),
+        json={
+            "name": f"bench-cache-{uuid.uuid4().hex[:8]}",
+            "type": "ROOM",
+            "capacity": 1000,
+            "slot_minutes": 60,
+            "open_time": "00:00",
+            "close_time": "23:59",
+            "timezone": "UTC",
+            "max_slots_per_booking": 4,
+            "max_quantity_per_booking": 1,
+        },
     )
     r.raise_for_status()
     return r.json()["resource_id"]

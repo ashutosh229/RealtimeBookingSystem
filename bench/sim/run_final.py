@@ -16,7 +16,6 @@ from _common import (
     pareto_front,
     write_csv,
 )
-
 from app.allocation.admission import CreditWallet, TokenBucket
 from app.allocation.fair_share import FairSharePolicy
 from app.allocation.fair_share_decay import FairShareDecayPolicy
@@ -24,9 +23,9 @@ from app.allocation.fifo import FifoPolicy
 from app.allocation.simulator import SimConfig, generate_trace, heavy_set, simulate
 
 SCENARIOS = {
-    "steady": dict(heavy_peak=0.0, surge_frac=0.0),
-    "bursty heavy users": dict(heavy_peak=0.8, surge_frac=0.0),
-    "flash crowd": dict(heavy_peak=0.0, surge_frac=0.5),
+    "steady": {"heavy_peak": 0.0, "surge_frac": 0.0},
+    "bursty heavy users": {"heavy_peak": 0.8, "surge_frac": 0.0},
+    "flash crowd": {"heavy_peak": 0.0, "surge_frac": 0.5},
 }
 KEYS = [
     "timely_rate",
@@ -88,9 +87,9 @@ def write_report(out, a, runs, rows) -> None:
     labels = list(dict.fromkeys(r["system"] for r in rows))
     md = [
         "# C4: final comparison\n",
-        f"Synthetic traces (demand/capacity = {a.ratio:g}, {a.users} users, {a.rounds} rounds, "
+        (f"Synthetic traces (demand/capacity = {a.ratio:g}, {a.users} users, {a.rounds} rounds, "
         f"{a.seeds} seeds, same trace for every system). Means over seeds. "
-        f"*Timely success* = share of all requests served within {a.timely} rounds.\n",
+        f"*Timely success* = share of all requests served within {a.timely} rounds.\n"),
     ]
     for sc in SCENARIOS:
         by = {r["system"]: r for r in rows if r["scenario"] == sc}

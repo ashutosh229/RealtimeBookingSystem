@@ -98,17 +98,17 @@ async def make_users(c: httpx.AsyncClient, n: int) -> list[dict]:
 
 
 async def create_resource(c: httpx.AsyncClient, admin: dict, **over) -> str:
-    body = dict(
-        name=f"bench-{uuid.uuid4().hex[:8]}",
-        type="ROOM",
-        capacity=5,
-        slot_minutes=60,
-        open_time="00:00",
-        close_time="23:59",
-        timezone="UTC",
-        max_slots_per_booking=4,
-        max_quantity_per_booking=1,
-    )
+    body = {
+        "name": f"bench-{uuid.uuid4().hex[:8]}",
+        "type": "ROOM",
+        "capacity": 5,
+        "slot_minutes": 60,
+        "open_time": "00:00",
+        "close_time": "23:59",
+        "timezone": "UTC",
+        "max_slots_per_booking": 4,
+        "max_quantity_per_booking": 1,
+    }
     body.update(over)
     r = await c.post("/admin/resources", json=body, headers=admin)
     r.raise_for_status()

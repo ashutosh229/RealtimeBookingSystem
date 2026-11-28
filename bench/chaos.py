@@ -182,17 +182,17 @@ async def setup(c, n):
             room = await c.post(
                 "/v1/admin/resources",
                 headers=admin,
-                json=dict(
-                    name=f"chaos-{tag}-{i}",
-                    type="ROOM",
-                    capacity=100,
-                    slot_minutes=60,
-                    open_time="00:00",
-                    close_time="23:59",
-                    timezone="UTC",
-                    max_slots_per_booking=4,
-                    max_quantity_per_booking=1,
-                ),
+                json={
+                    "name": f"chaos-{tag}-{i}",
+                    "type": "ROOM",
+                    "capacity": 100,
+                    "slot_minutes": 60,
+                    "open_time": "00:00",
+                    "close_time": "23:59",
+                    "timezone": "UTC",
+                    "max_slots_per_booking": 4,
+                    "max_quantity_per_booking": 1,
+                },
             )
             room.raise_for_status()
             return h, uid, room.json()["resource_id"]
@@ -217,7 +217,7 @@ async def db_connect(timeout=90):
     while True:
         try:
             return await asyncpg.connect(DSN, timeout=5)
-        except Exception:  # noqa: BLE001
+        except Exception:
             if time.monotonic() > end:
                 raise
             await asyncio.sleep(1)
