@@ -7,7 +7,6 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import {
   ActivityIndicator,
   Pressable,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -16,94 +15,18 @@ import {
   type TextInputProps,
   type ViewStyle,
 } from "react-native";
+import { MAX_WIDTH, radius, space, useTheme, type IconName } from "./theme";
+
+export { MAX_WIDTH, radius, space, useTheme, type IconName } from "./theme";
 
 /** Web-only hover state, which react-native-web adds to Pressable but the types omit. */
 export const isHovered = (st: PressableStateCallbackType) =>
   (st as { hovered?: boolean }).hovered === true;
 
-export type IconName = ComponentProps<typeof Ionicons>["name"];
-
-export const colors = {
-  bg: "#F5F6FA",
-  card: "#FFFFFF",
-  text: "#0F172A",
-  body: "#334155",
-  muted: "#64748B",
-  faint: "#94A3B8",
-  line: "#E2E8F0",
-  lineSoft: "#EEF1F6",
-  primary: "#4338CA",
-  primaryHover: "#3730A3",
-  primarySoft: "#EEF2FF",
-  primaryText: "#3730A3",
-  danger: "#DC2626",
-  dangerSoft: "#FEF2F2",
-  ok: "#047857",
-  okSoft: "#ECFDF5",
-  warn: "#B45309",
-  warnSoft: "#FFFBEB",
-  info: "#1D4ED8",
-  infoSoft: "#EFF6FF",
-};
-
-export const space = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24, xxl: 32 };
-export const radius = { sm: 8, md: 12, lg: 16, pill: 999 };
-export const shadow: ViewStyle = {
-  boxShadow:
-    "0px 1px 2px rgba(15, 23, 42, 0.04), 0px 4px 12px rgba(15, 23, 42, 0.05)",
-};
-export const MAX_WIDTH = 760;
-
 export const TYPE_LABEL: Record<string, string> = {
   SEAT: "Study seat",
   ROOM: "Room",
   COMPUTE_POOL: "Compute pool",
-};
-
-export const TYPE_META: Record<
-  string,
-  { icon: IconName; fg: string; bg: string }
-> = {
-  SEAT: { icon: "library-outline", fg: "#4338CA", bg: "#EEF2FF" },
-  ROOM: { icon: "people-outline", fg: "#0F766E", bg: "#F0FDFA" },
-  COMPUTE_POOL: { icon: "hardware-chip-outline", fg: "#B45309", bg: "#FFFBEB" },
-};
-
-export const STATUS_META: Record<
-  string,
-  { label: string; fg: string; bg: string; icon: IconName }
-> = {
-  CONFIRMED: {
-    label: "Confirmed",
-    fg: colors.ok,
-    bg: colors.okSoft,
-    icon: "checkmark-circle",
-  },
-  WAITLISTED: {
-    label: "Waitlisted",
-    fg: colors.warn,
-    bg: colors.warnSoft,
-    icon: "hourglass",
-  },
-  COMPLETED: {
-    label: "Completed",
-    fg: colors.info,
-    bg: colors.infoSoft,
-    icon: "flag",
-  },
-  CANCELLED: {
-    label: "Cancelled",
-    fg: colors.muted,
-    bg: "#F1F5F9",
-    icon: "close-circle",
-  },
-  EXPIRED: { label: "Expired", fg: colors.muted, bg: "#F1F5F9", icon: "time" },
-  REQUESTED: {
-    label: "Pending",
-    fg: colors.muted,
-    bg: "#F1F5F9",
-    icon: "ellipsis-horizontal-circle",
-  },
 };
 
 /** "ug" -> "UG", "faculty" -> "Faculty". */
@@ -120,12 +43,14 @@ export const POLICY_TEXT: Record<string, string> = {
 export function Icon({
   name,
   size = 18,
-  color = colors.muted,
+  color,
 }: {
   name: IconName;
   size?: number;
   color?: string;
 }) {
+  const { colors } = useTheme();
+  color = color ?? colors.muted;
   return <Ionicons name={name} size={size} color={color} />;
 }
 
@@ -136,7 +61,8 @@ export function Badge({
   status: string;
   size?: "sm" | "md";
 }) {
-  const m = STATUS_META[status] ?? STATUS_META.REQUESTED;
+  const { s, statusMeta } = useTheme();
+  const m = statusMeta[status] ?? statusMeta.REQUESTED;
   const md = size === "md";
   return (
     <View
@@ -163,6 +89,7 @@ export function Tag({
   icon?: IconName;
   tone?: "neutral" | "primary";
 }) {
+  const { colors, s } = useTheme();
   const fg = tone === "primary" ? colors.primaryText : colors.body;
   return (
     <View
@@ -188,6 +115,7 @@ export function Card({
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }) {
+  const { colors, s } = useTheme();
   if (!onPress) return <View style={[s.card, style]}>{children}</View>;
   return (
     <Pressable
@@ -198,7 +126,7 @@ export function Card({
         const hovered = isHovered(st);
         return [
           s.card,
-          hovered && { borderColor: "#C7D2FE" },
+          hovered && { borderColor: colors.primaryBorder },
           pressed && { opacity: 0.85, transform: [{ scale: 0.995 }] },
           style,
         ];
@@ -210,7 +138,8 @@ export function Card({
 }
 
 export function TypeIcon({ type, size = 44 }: { type: string; size?: number }) {
-  const m = TYPE_META[type] ?? TYPE_META.SEAT;
+  const { typeMeta } = useTheme();
+  const m = typeMeta[type] ?? typeMeta.SEAT;
   return (
     <View
       style={{
@@ -248,13 +177,14 @@ export function Button({
   size?: "sm" | "md";
   style?: StyleProp<ViewStyle>;
 }) {
+  const { colors, s } = useTheme();
   const look: Record<
     ButtonKind,
     { bg: string; fg: string; border: string; hover: string }
   > = {
     primary: {
       bg: colors.primary,
-      fg: "#fff",
+      fg: colors.onPrimary,
       border: colors.primary,
       hover: colors.primaryHover,
     },
@@ -262,13 +192,13 @@ export function Button({
       bg: colors.card,
       fg: colors.text,
       border: colors.line,
-      hover: "#F8FAFC",
+      hover: colors.cardAlt,
     },
     danger: {
       bg: colors.danger,
-      fg: "#fff",
+      fg: colors.onPrimary,
       border: colors.danger,
-      hover: "#B91C1C",
+      hover: colors.dangerHover,
     },
     ghost: {
       bg: "transparent",
@@ -279,7 +209,7 @@ export function Button({
     dangerGhost: {
       bg: colors.card,
       fg: colors.danger,
-      border: "#FECACA",
+      border: colors.dangerBorder,
       hover: colors.dangerSoft,
     },
   };
@@ -339,6 +269,7 @@ export function IconButton({
   disabled?: boolean;
   label: string;
 }) {
+  const { colors, s } = useTheme();
   return (
     <Pressable
       onPress={onPress}
@@ -373,6 +304,7 @@ export function Chip({
   count?: number;
   icon?: IconName;
 }) {
+  const { colors, s } = useTheme();
   return (
     <Pressable
       onPress={onPress}
@@ -382,17 +314,21 @@ export function Chip({
         const hovered = isHovered(st);
         return [
           s.chip,
-          hovered && !active && { borderColor: "#C7D2FE" },
+          hovered && !active && { borderColor: colors.primaryBorder },
           active && s.chipOn,
         ];
       }}
     >
       {icon && (
-        <Icon name={icon} size={15} color={active ? "#fff" : colors.body} />
+        <Icon
+          name={icon}
+          size={15}
+          color={active ? colors.onPrimary : colors.body}
+        />
       )}
       <Text
         style={{
-          color: active ? "#fff" : colors.body,
+          color: active ? colors.onPrimary : colors.body,
           fontWeight: "600",
           fontSize: 14,
         }}
@@ -402,7 +338,7 @@ export function Chip({
       {count !== undefined && (
         <Text
           style={{
-            color: active ? "#C7D2FE" : colors.faint,
+            color: active ? colors.onPrimaryMuted : colors.faint,
             fontWeight: "600",
             fontSize: 13,
           }}
@@ -424,6 +360,7 @@ export function Segmented<T extends string | number>({
   value: T;
   onChange: (v: T) => void;
 }) {
+  const { colors, s } = useTheme();
   return (
     <View style={s.segTrack}>
       {options.map(([k, label]) => {
@@ -459,6 +396,7 @@ export function Field({
   style,
   ...rest
 }: TextInputProps & { label?: string; icon?: IconName; secure?: boolean }) {
+  const { colors, s } = useTheme();
   const [focus, setFocus] = useState(false);
   const [hidden, setHidden] = useState(true);
   return (
@@ -507,6 +445,7 @@ export function SectionTitle({
   title: string;
   right?: ReactNode;
 }) {
+  const { s } = useTheme();
   return (
     <View style={[s.row, { marginTop: space.sm }]}>
       <Text style={s.section}>{title}</Text>
@@ -526,6 +465,7 @@ export function InfoRow({
   value: ReactNode;
   last?: boolean;
 }) {
+  const { colors, s } = useTheme();
   return (
     <View style={[s.infoRow, !last && s.divider]}>
       <View style={s.infoIcon}>
@@ -556,6 +496,7 @@ export function EmptyState({
   message?: string;
   action?: ReactNode;
 }) {
+  const { colors, s } = useTheme();
   return (
     <View style={s.empty}>
       <View style={s.emptyIcon}>
@@ -579,10 +520,13 @@ export function ErrorBox({
   message: string;
   onRetry?: () => void;
 }) {
+  const { colors, s } = useTheme();
   return (
     <View style={s.errorBox}>
       <Icon name="alert-circle" size={20} color={colors.danger} />
-      <Text style={{ color: "#991B1B", flex: 1, fontSize: 14 }}>{message}</Text>
+      <Text style={{ color: colors.dangerText, flex: 1, fontSize: 14 }}>
+        {message}
+      </Text>
       {onRetry && (
         <Button kind="ghost" size="sm" title="Retry" onPress={onRetry} />
       )}
@@ -599,6 +543,7 @@ export function Callout({
   tone?: "info" | "warn" | "ok";
   icon?: IconName;
 }) {
+  const { colors, s } = useTheme();
   const m = {
     info: {
       bg: colors.primarySoft,
@@ -607,12 +552,12 @@ export function Callout({
     },
     warn: {
       bg: colors.warnSoft,
-      fg: "#92400E",
+      fg: colors.warnText,
       icon: "hourglass-outline" as IconName,
     },
     ok: {
       bg: colors.okSoft,
-      fg: "#065F46",
+      fg: colors.okText,
       icon: "checkmark-circle" as IconName,
     },
   }[tone];
@@ -627,6 +572,7 @@ export function Callout({
 }
 
 export function Loading({ label }: { label?: string }) {
+  const { colors, s } = useTheme();
   return (
     <View style={{ padding: space.xxl, alignItems: "center", gap: space.sm }}>
       <ActivityIndicator color={colors.primary} />
@@ -636,6 +582,7 @@ export function Loading({ label }: { label?: string }) {
 }
 
 export function Avatar({ name, size = 56 }: { name?: string; size?: number }) {
+  const { colors } = useTheme();
   const initials =
     (name ?? "?")
       .split(/\s+/)
@@ -654,7 +601,13 @@ export function Avatar({ name, size = 56 }: { name?: string; size?: number }) {
         justifyContent: "center",
       }}
     >
-      <Text style={{ color: "#fff", fontWeight: "800", fontSize: size * 0.36 }}>
+      <Text
+        style={{
+          color: colors.onPrimary,
+          fontWeight: "800",
+          fontSize: size * 0.36,
+        }}
+      >
         {initials}
       </Text>
     </View>
@@ -669,206 +622,13 @@ export function Note({
   children: ReactNode;
   tone?: "muted" | "error" | "ok";
 }) {
+  const { colors } = useTheme();
   const color =
     tone === "error" ? colors.danger : tone === "ok" ? colors.ok : colors.muted;
   return (
     <Text style={{ color, fontSize: 14, lineHeight: 20 }}>{children}</Text>
   );
 }
-
-export const headerOptions = {
-  headerStyle: { backgroundColor: colors.card },
-  headerTintColor: colors.text,
-  headerTitleStyle: { fontWeight: "700" as const, fontSize: 17 },
-  headerShadowVisible: false,
-  contentStyle: { backgroundColor: colors.bg },
-};
-
-export const s = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  content: {
-    padding: space.lg,
-    gap: space.md,
-    maxWidth: MAX_WIDTH,
-    width: "100%",
-    alignSelf: "center",
-  },
-  card: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    padding: space.lg,
-    borderWidth: 1,
-    borderColor: colors.lineSoft,
-    gap: space.xs,
-    ...shadow,
-  },
-  h1: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: colors.text,
-    letterSpacing: -0.3,
-  },
-  h2: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: colors.text,
-    letterSpacing: -0.2,
-  },
-  title: { fontSize: 16, fontWeight: "700", color: colors.text },
-  section: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.muted,
-    textTransform: "uppercase",
-    letterSpacing: 0.6,
-  },
-  body: { fontSize: 15, color: colors.body },
-  muted: { color: colors.muted, fontSize: 14 },
-  label: { fontSize: 14, fontWeight: "600", color: colors.body },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: space.sm,
-  },
-  hstack: { flexDirection: "row", alignItems: "center", gap: space.sm },
-  wrap: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  divider: { borderBottomWidth: 1, borderBottomColor: colors.lineSoft },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.card,
-  },
-  chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  segTrack: {
-    flexDirection: "row",
-    backgroundColor: "#E9ECF3",
-    borderRadius: radius.md,
-    padding: 4,
-    gap: 4,
-  },
-  segItem: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: 8,
-    borderRadius: radius.sm,
-  },
-  segOn: {
-    backgroundColor: colors.card,
-    boxShadow: "0px 1px 3px rgba(15, 23, 42, 0.12)",
-  },
-  inputWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    paddingHorizontal: 14,
-    backgroundColor: colors.card,
-  },
-  inputFocus: {
-    borderColor: colors.primary,
-    boxShadow: "0px 0px 0px 3px rgba(67, 56, 202, 0.15)",
-  },
-  input: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: colors.text,
-    outlineStyle: "none",
-  } as never,
-  badge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: radius.pill,
-    alignSelf: "flex-start",
-  },
-  tag: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: radius.sm,
-    backgroundColor: "#F1F5F9",
-  },
-  button: {
-    flexDirection: "row",
-    gap: space.sm,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    paddingVertical: 13,
-    paddingHorizontal: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.card,
-  },
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space.md,
-    paddingVertical: space.md,
-  },
-  infoIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  empty: {
-    alignItems: "center",
-    gap: space.sm,
-    paddingVertical: 48,
-    paddingHorizontal: space.xl,
-  },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: space.xs,
-  },
-  errorBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: space.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.dangerSoft,
-    borderWidth: 1,
-    borderColor: "#FECACA",
-  },
-  callout: {
-    flexDirection: "row",
-    gap: 10,
-    padding: space.md,
-    borderRadius: radius.md,
-    alignItems: "flex-start",
-  },
-});
 
 /** Fades and slides a list item in; later items wait a little longer (capped so long lists stay quick). */
 export function Appear({
@@ -889,13 +649,14 @@ export function Appear({
 
 /** Grey placeholder shaped like a resource or booking card, shown while data loads. */
 export function SkeletonCard() {
+  const { colors, s } = useTheme();
   const bar = (w: number | `${number}%`, h = 12) => (
     <View
       style={{
         width: w,
         height: h,
         borderRadius: 6,
-        backgroundColor: "#EEF1F6",
+        backgroundColor: colors.track,
       }}
     />
   );
@@ -906,7 +667,7 @@ export function SkeletonCard() {
           width: 44,
           height: 44,
           borderRadius: 13,
-          backgroundColor: "#EEF1F6",
+          backgroundColor: colors.track,
         }}
       />
       <View style={{ flex: 1, gap: 8, paddingTop: 2 }}>
@@ -920,20 +681,22 @@ export function SkeletonCard() {
 
 export function ProgressBar({
   value,
-  color = colors.primary,
+  color,
   height = 6,
 }: {
   value: number;
   color?: string;
   height?: number;
 }) {
+  const { colors } = useTheme();
+  color = color ?? colors.primary;
   const pct = Math.max(0, Math.min(1, value)) * 100;
   return (
     <View
       style={{
         height,
         borderRadius: height / 2,
-        backgroundColor: "#EEF1F6",
+        backgroundColor: colors.track,
         overflow: "hidden",
       }}
     >
@@ -951,6 +714,7 @@ export function ProgressBar({
 
 /** Small coloured dot plus text, e.g. "Open · closes 22:00". */
 export function StatusDot({ on, label }: { on: boolean; label: string }) {
+  const { colors, s } = useTheme();
   return (
     <View style={[s.hstack, { gap: 6 }]}>
       <View
@@ -958,7 +722,7 @@ export function StatusDot({ on, label }: { on: boolean; label: string }) {
           width: 8,
           height: 8,
           borderRadius: 4,
-          backgroundColor: on ? "#10B981" : colors.faint,
+          backgroundColor: on ? colors.live : colors.faint,
         }}
       />
       <Text
