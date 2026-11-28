@@ -26,25 +26,25 @@ import {
   TYPE_LABEL,
   Tag,
   TypeIcon,
-  colors,
-  s,
   space,
 } from "../../ui";
+import { useTheme, type Palette } from "../../theme";
 
 type Tab = "edit" | "waitlist" | "decisions";
 
-const DECISION: Record<string, { label: string; fg: string; bg: string }> = {
-  ADMIT: { label: "Admitted", fg: colors.ok, bg: colors.okSoft },
-  PROMOTE: { label: "Promoted", fg: colors.ok, bg: colors.okSoft },
-  REJECT_FULL: {
-    label: "Rejected · full",
-    fg: colors.danger,
-    bg: colors.dangerSoft,
-  },
-  SKIP_INELIGIBLE: { label: "Skipped", fg: colors.warn, bg: colors.warnSoft },
-};
+const decision = (
+  type: string,
+  c: Palette,
+): { label: string; fg: string; bg: string } =>
+  ({
+    ADMIT: { label: "Admitted", fg: c.ok, bg: c.okSoft },
+    PROMOTE: { label: "Promoted", fg: c.ok, bg: c.okSoft },
+    REJECT_FULL: { label: "Rejected · full", fg: c.danger, bg: c.dangerSoft },
+    SKIP_INELIGIBLE: { label: "Skipped", fg: c.warn, bg: c.warnSoft },
+  })[type] ?? { label: type, fg: c.muted, bg: c.neutralSoft };
 
 export default function ManageResource() {
+  const { colors, s } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
@@ -190,7 +190,9 @@ export default function ManageResource() {
                   onPress={() => setConfirm("plain")}
                 />
               ) : (
-                <Card style={{ borderColor: "#FECACA", gap: space.md }}>
+                <Card
+                  style={{ borderColor: colors.dangerBorder, gap: space.md }}
+                >
                   <Text style={s.title}>
                     {confirm === "force"
                       ? "Cancel upcoming bookings and deactivate?"
@@ -298,7 +300,7 @@ export default function ManageResource() {
             <EmptyState icon="git-branch-outline" title="No decisions yet" />
           )}
           {(aq.data ?? []).map((d) => {
-            const m = DECISION[d.decision_type] ?? DECISION.ADMIT;
+            const m = decision(d.decision_type, colors);
             const inputs = Object.entries(d.inputs ?? {})
               .filter(([, v]) => typeof v !== "object")
               .slice(0, 4);
