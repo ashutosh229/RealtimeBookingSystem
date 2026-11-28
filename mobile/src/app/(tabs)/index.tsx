@@ -24,13 +24,11 @@ import {
   TYPE_LABEL,
   Tag,
   TypeIcon,
-  colors,
   radius,
-  s,
-  shadow,
   space,
   type IconName,
 } from "../../ui";
+import { useTheme } from "../../theme";
 
 const FILTERS: [string, string, IconName][] = [
   ["ALL", "All", "apps-outline"],
@@ -82,6 +80,7 @@ function ResourceCard({
   now: Date;
   onPress: () => void;
 }) {
+  const { colors, s } = useTheme();
   const st = openState(r.open_time, r.close_time, r.timezone, now);
   return (
     <Card onPress={onPress}>
@@ -139,6 +138,7 @@ function Hero({
   upcoming: number;
   waiting: number;
 }) {
+  const { colors, shadow } = useTheme();
   const summary =
     upcoming + waiting === 0
       ? "No bookings coming up. Find a place below."
@@ -151,7 +151,7 @@ function Hero({
   return (
     <View
       style={{
-        backgroundColor: colors.primary,
+        backgroundColor: colors.hero,
         borderRadius: radius.lg,
         padding: space.xl,
         gap: 6,
@@ -181,12 +181,18 @@ function Hero({
           backgroundColor: "rgba(255,255,255,0.06)",
         }}
       />
-      <Text style={{ color: "#C7D2FE", fontSize: 13, fontWeight: "700" }}>
+      <Text
+        style={{
+          color: colors.onPrimaryMuted,
+          fontSize: 13,
+          fontWeight: "700",
+        }}
+      >
         {greeting().toUpperCase()}
       </Text>
       <Text
         style={{
-          color: "#fff",
+          color: colors.onPrimary,
           fontSize: 24,
           fontWeight: "800",
           letterSpacing: -0.3,
@@ -194,7 +200,9 @@ function Hero({
       >
         {name ? `Hi, ${name}` : "Welcome"}
       </Text>
-      <Text style={{ color: "#E0E7FF", fontSize: 14 }}>{summary}</Text>
+      <Text style={{ color: colors.onPrimarySoft, fontSize: 14 }}>
+        {summary}
+      </Text>
     </View>
   );
 }
@@ -211,6 +219,7 @@ function UpNext({
   now: Date;
   onPress: () => void;
 }) {
+  const { colors, s } = useTheme();
   const tz = r?.timezone ?? "UTC";
   const startMs = new Date(b.start_time).getTime();
   const started = startMs <= now.getTime();
@@ -249,6 +258,7 @@ function UpNext({
 }
 
 export default function Explore() {
+  const { s } = useTheme();
   const router = useRouter();
   const { user } = useAuth();
   const now = useNow();
