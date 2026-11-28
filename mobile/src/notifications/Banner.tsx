@@ -2,11 +2,13 @@ import { useRouter } from "expo-router";
 import { useEffect } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Icon, colors, radius, space } from "../ui";
+import { Icon, radius, space } from "../ui";
 import { notifyMeta } from "./meta";
 import { useNotifications } from "./NotificationsContext";
+import { useTheme } from "../theme";
 
 export function Banner() {
+  const { colors } = useTheme();
   const { banner, dismissBanner, markRead } = useNotifications();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -20,7 +22,7 @@ export function Banner() {
     typeof banner.payload.booking_id === "string"
       ? banner.payload.booking_id
       : null;
-  const m = notifyMeta(banner.type);
+  const m = notifyMeta(banner.type, colors);
   return (
     <View
       pointerEvents="box-none"
@@ -33,7 +35,12 @@ export function Banner() {
         accessibilityRole="alert"
         style={({ pressed }) => [
           styles.banner,
-          { borderLeftColor: m.fg },
+          {
+            borderLeftColor: m.fg,
+            backgroundColor: colors.card,
+            boxShadow: colors.shadowRaised,
+            borderColor: colors.lineSoft,
+          },
           pressed && { opacity: 0.9 },
         ]}
         onPress={() => {
@@ -46,8 +53,11 @@ export function Banner() {
           <Icon name={m.icon} size={20} color={m.fg} />
         </View>
         <View style={{ flex: 1, gap: 2 }}>
-          <Text style={styles.title}>{m.title}</Text>
-          <Text style={styles.text} numberOfLines={2}>
+          <Text style={[styles.title, { color: colors.text }]}>{m.title}</Text>
+          <Text
+            style={[styles.text, { color: colors.muted }]}
+            numberOfLines={2}
+          >
             {String(banner.payload.message ?? banner.type)}
           </Text>
         </View>
@@ -77,12 +87,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: space.md,
-    backgroundColor: colors.card,
     borderRadius: radius.lg,
+    borderWidth: 1,
     borderLeftWidth: 4,
     padding: space.md,
     elevation: 8,
-    boxShadow: "0px 8px 24px rgba(15, 23, 42, 0.16)",
   },
   icon: {
     width: 36,
@@ -91,6 +100,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { color: colors.text, fontWeight: "700", fontSize: 15 },
-  text: { color: colors.muted, fontSize: 14 },
+  title: { fontWeight: "700", fontSize: 15 },
+  text: { fontSize: 14 },
 });
