@@ -8,22 +8,13 @@ import {
 } from "react-native";
 import { useAuth } from "../auth/AuthContext";
 import { explain } from "../lib/errors";
-import {
-  Button,
-  ErrorBox,
-  Field,
-  Icon,
-  Segmented,
-  colors,
-  radius,
-  s,
-  shadow,
-  space,
-} from "../ui";
+import { Button, ErrorBox, Field, Icon, Segmented, radius, space } from "../ui";
+import { useTheme } from "../theme";
 
 type Mode = "login" | "register";
 
 export default function Login() {
+  const { colors, s, shadow } = useTheme();
   const { login, register } = useAuth();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
@@ -87,7 +78,7 @@ export default function Login() {
                 ...shadow,
               }}
             >
-              <Icon name="calendar" size={30} color="#fff" />
+              <Icon name="calendar" size={30} color={colors.onPrimary} />
             </View>
             <Text style={[s.h1, { marginTop: space.sm }]}>
               RealTime Booking
