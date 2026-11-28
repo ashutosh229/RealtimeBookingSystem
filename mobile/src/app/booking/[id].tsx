@@ -3,14 +3,17 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { cancelBooking, getBooking, getResource } from "../../api/endpoints";
+import { useAuth } from "../../auth/AuthContext";
 import { explain } from "../../lib/errors";
-import { fmtDateTime, fmtTime } from "../../lib/time";
+import { fmtDateTime, fmtMinutes, fmtTime, until } from "../../lib/time";
+import { useNow } from "../../lib/useNow";
 import {
   Badge,
   Button,
   Callout,
   Card,
   ErrorBox,
+  Icon,
   InfoRow,
   Loading,
   SectionTitle,
@@ -37,6 +40,8 @@ export default function BookingScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const [confirm, setConfirm] = useState(false);
+  const { user } = useAuth();
+  const clock = useNow();
   const bq = useQuery({
     queryKey: ["booking", id],
     queryFn: () => getBooking(id),
@@ -70,6 +75,30 @@ export default function BookingScreen() {
   const active = b.status === "CONFIRMED" || b.status === "WAITLISTED";
   const waiting = b.status === "WAITLISTED";
   const history = [...(b.history ?? [])].reverse();
+  const now = clock.getTime();
+  const startMs = new Date(b.start_time).getTime();
+  const endMs = new Date(b.end_time).getTime();
+  // Mirrors the server's rule: waitlist entries can always be withdrawn, admins can cancel until the
+  // end, everyone else until the resource's notice period before the start.
+  const notice = r?.min_cancel_notice_minutes ?? 0;
+  const deadline = startMs - notice * 60_000;
+  const canCancel =
+    active &&
+    (waiting || (user?.role === "admin" ? endMs > now : deadline > now));
+  const timing =
+    b.status !== "CONFIRMED"
+      ? null
+      : now >= endMs
+        ? { text: "This booking has ended", tone: colors.muted }
+        : now >= startMs
+          ? {
+              text: `Happening now · ends ${fmtTime(b.end_time, tz)}`,
+              tone: colors.ok,
+            }
+          : {
+              text: `Starts ${until(b.start_time, now)}`,
+              tone: startMs - now < 3600_000 ? colors.ok : colors.primary,
+            };
 
   return (
     <ScrollView
@@ -86,8 +115,20 @@ export default function BookingScreen() {
             {r && <Text style={s.muted}>{TYPE_LABEL[r.type]}</Text>}
           </View>
         </View>
-        <Badge status={b.status} size="md" />
-        {b.status === "CONFIRMED" && (
+        <View style={[s.hstack, { gap: space.md, flexWrap: "wrap" }]}>
+          <Badge status={b.status} size="md" />
+          {timing && (
+            <View style={[s.hstack, { gap: 6 }]}>
+              <Icon name="timer-outline" size={16} color={timing.tone} />
+              <Text
+                style={{ fontSize: 14, fontWeight: "700", color: timing.tone }}
+              >
+                {timing.text}
+              </Text>
+            </View>
+          )}
+        </View>
+        {b.status === "CONFIRMED" && now < startMs && (
           <Callout tone="ok">
             You're all set. Your place is reserved for the time below.
           </Callout>
@@ -161,6 +202,21 @@ export default function BookingScreen() {
             value={String(b.quantity)}
           />
         )}
+        {b.status === "CONFIRMED" && endMs > now && (
+          <InfoRow
+            icon="close-circle-outline"
+            label="Free cancellation"
+            value={
+              canCancel
+                ? user?.role === "admin" && deadline <= now
+                  ? "Admin override until it ends"
+                  : notice === 0
+                    ? "Until it starts"
+                    : `Until ${fmtDateTime(new Date(deadline).toISOString(), tz)}`
+                : "Closed"
+            }
+          />
+        )}
         <InfoRow
           icon="create-outline"
           label="Booked"
@@ -174,7 +230,14 @@ export default function BookingScreen() {
         />
       </Card>
 
-      {active && !confirm && (
+      {active && !canCancel && (
+        <Callout icon="lock-closed-outline">
+          {now >= startMs
+            ? "This booking has started, so it can no longer be cancelled."
+            : `Cancellation closed ${fmtMinutes(notice)} before the start. If you can't make it, please let the staff know.`}
+        </Callout>
+      )}
+      {canCancel && !confirm && (
         <Button
           kind="dangerGhost"
           icon={waiting ? "exit-outline" : "close-circle-outline"}
@@ -182,7 +245,7 @@ export default function BookingScreen() {
           onPress={() => setConfirm(true)}
         />
       )}
-      {active && confirm && (
+      {canCancel && confirm && (
         <Card style={{ borderColor: "#FECACA", gap: space.md }}>
           <Text style={s.title}>
             {waiting ? "Leave the waitlist?" : "Cancel this booking?"}
