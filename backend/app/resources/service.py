@@ -17,6 +17,9 @@ _UPDATABLE = {
     "close_time",
     "max_slots_per_booking",
     "max_quantity_per_booking",
+    "max_active_per_user",
+    "min_cancel_notice_minutes",
+    "booking_horizon_days",
     "policy_name",
     "lat",
     "lon",
@@ -49,8 +52,10 @@ async def create(conn: asyncpg.Connection, body: ResourceCreate) -> asyncpg.Reco
     async with conn.transaction():
         rid = await conn.fetchval(
             "INSERT INTO resources (type, name, capacity, slot_minutes, open_time, close_time, timezone,"
-            " max_slots_per_booking, max_quantity_per_booking, policy_name, lat, lon)"
-            " VALUES ($1::resource_type, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING resource_id",
+            " max_slots_per_booking, max_quantity_per_booking, policy_name, lat, lon,"
+            " max_active_per_user, min_cancel_notice_minutes, booking_horizon_days)"
+            " VALUES ($1::resource_type, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)"
+            " RETURNING resource_id",
             cfg["type"],
             cfg["name"],
             cfg["capacity"],
@@ -63,6 +68,9 @@ async def create(conn: asyncpg.Connection, body: ResourceCreate) -> asyncpg.Reco
             cfg["policy_name"],
             cfg["lat"],
             cfg["lon"],
+            cfg["max_active_per_user"],
+            cfg["min_cancel_notice_minutes"],
+            cfg["booking_horizon_days"],
         )
         for g in set(cfg["eligible_groups"]):
             await conn.execute("INSERT INTO resource_eligibility VALUES ($1, $2)", rid, g)
