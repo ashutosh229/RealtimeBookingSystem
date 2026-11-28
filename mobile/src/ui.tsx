@@ -3,6 +3,7 @@
  */
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useState, type ComponentProps, type ReactNode } from "react";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import {
   ActivityIndicator,
   Pressable,
@@ -868,3 +869,107 @@ export const s = StyleSheet.create({
     alignItems: "flex-start",
   },
 });
+
+/** Fades and slides a list item in; later items wait a little longer (capped so long lists stay quick). */
+export function Appear({
+  index = 0,
+  children,
+}: {
+  index?: number;
+  children: ReactNode;
+}) {
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(260).delay(Math.min(index, 8) * 40)}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+/** Grey placeholder shaped like a resource or booking card, shown while data loads. */
+export function SkeletonCard() {
+  const bar = (w: number | `${number}%`, h = 12) => (
+    <View
+      style={{
+        width: w,
+        height: h,
+        borderRadius: 6,
+        backgroundColor: "#EEF1F6",
+      }}
+    />
+  );
+  return (
+    <View style={[s.card, { flexDirection: "row", gap: space.md }]}>
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 13,
+          backgroundColor: "#EEF1F6",
+        }}
+      />
+      <View style={{ flex: 1, gap: 8, paddingTop: 2 }}>
+        {bar("60%", 14)}
+        {bar("35%")}
+        {bar("80%")}
+      </View>
+    </View>
+  );
+}
+
+export function ProgressBar({
+  value,
+  color = colors.primary,
+  height = 6,
+}: {
+  value: number;
+  color?: string;
+  height?: number;
+}) {
+  const pct = Math.max(0, Math.min(1, value)) * 100;
+  return (
+    <View
+      style={{
+        height,
+        borderRadius: height / 2,
+        backgroundColor: "#EEF1F6",
+        overflow: "hidden",
+      }}
+    >
+      <View
+        style={{
+          width: `${pct}%`,
+          height,
+          borderRadius: height / 2,
+          backgroundColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
+/** Small coloured dot plus text, e.g. "Open · closes 22:00". */
+export function StatusDot({ on, label }: { on: boolean; label: string }) {
+  return (
+    <View style={[s.hstack, { gap: 6 }]}>
+      <View
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: on ? "#10B981" : colors.faint,
+        }}
+      />
+      <Text
+        style={{
+          fontSize: 13,
+          fontWeight: "600",
+          color: on ? colors.ok : colors.muted,
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
