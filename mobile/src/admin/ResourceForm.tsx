@@ -37,7 +37,8 @@ const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const deviceZone = () => {
   try {
-    const z = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+    const z =
+      Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
     return z === "Asia/Calcutta" ? "Asia/Kolkata" : z; // some browsers still report the old name
   } catch {
     return "Asia/Kolkata";
@@ -54,6 +55,9 @@ type Values = {
   timezone: string;
   max_slots_per_booking: string;
   max_quantity_per_booking: string;
+  max_active_per_user: string;
+  min_cancel_notice_minutes: string;
+  booking_horizon_days: string;
   policy_name: Policy;
   groups: string;
   lat: string;
@@ -71,6 +75,9 @@ function initial(r?: Resource): Values {
     timezone: r?.timezone ?? deviceZone(),
     max_slots_per_booking: String(r?.max_slots_per_booking ?? 4),
     max_quantity_per_booking: String(r?.max_quantity_per_booking ?? 1),
+    max_active_per_user: String(r?.max_active_per_user ?? 2),
+    min_cancel_notice_minutes: String(r?.min_cancel_notice_minutes ?? 0),
+    booking_horizon_days: String(r?.booking_horizon_days ?? 14),
     policy_name: r?.policy_name ?? "FAIR_SHARE",
     groups: (r?.eligible_groups ?? []).join(", "),
     lat: r?.lat != null ? String(r.lat) : "",
@@ -92,6 +99,14 @@ function problems(v: Values): string[] {
   if (!(int(v.max_slots_per_booking) >= 1))
     out.push("Max slots per booking must be at least 1.");
   if (!(qty >= 1)) out.push("Max quantity per booking must be at least 1.");
+  const act = int(v.max_active_per_user);
+  if (!(act >= 1 && act <= 50))
+    out.push("Active bookings per person must be between 1 and 50.");
+  const notice = int(v.min_cancel_notice_minutes);
+  if (!(notice >= 0 && notice <= 10080))
+    out.push("Cancellation notice must be 0 to 10080 minutes (one week).");
+  const hz = int(v.booking_horizon_days);
+  if (!(hz >= 1 && hz <= 90)) out.push("Booking horizon must be 1 to 90 days.");
   else if (qty > cap)
     out.push("Max quantity per booking cannot exceed capacity.");
   if (v.type === "SEAT" && qty !== 1)
@@ -119,6 +134,9 @@ function toBody(v: Values) {
     close_time: v.close_time,
     max_slots_per_booking: int(v.max_slots_per_booking),
     max_quantity_per_booking: int(v.max_quantity_per_booking),
+    max_active_per_user: int(v.max_active_per_user),
+    min_cancel_notice_minutes: int(v.min_cancel_notice_minutes),
+    booking_horizon_days: int(v.booking_horizon_days),
     policy_name: v.policy_name,
     eligible_groups: v.groups
       .split(",")
@@ -298,6 +316,41 @@ export function ResourceForm({
             />
           </View>
         </View>
+      </Card>
+
+      <SectionTitle title="Booking rules" />
+      <Card style={{ gap: space.md }}>
+        <View style={[s.hstack, { gap: space.md }]}>
+          <View style={{ flex: 1 }}>
+            <Field
+              label="Book ahead (days)"
+              icon="calendar-outline"
+              value={v.booking_horizon_days}
+              onChangeText={set("booking_horizon_days")}
+              keyboardType="number-pad"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field
+              label="Active bookings / person"
+              icon="layers-outline"
+              value={v.max_active_per_user}
+              onChangeText={set("max_active_per_user")}
+              keyboardType="number-pad"
+            />
+          </View>
+        </View>
+        <Field
+          label="Cancellation notice (minutes before start)"
+          icon="close-circle-outline"
+          value={v.min_cancel_notice_minutes}
+          onChangeText={set("min_cancel_notice_minutes")}
+          keyboardType="number-pad"
+        />
+        <Text style={[s.muted, { fontSize: 13 }]}>
+          Students see these rules on the booking screen. 0 minutes means they
+          can cancel any time before the start.
+        </Text>
       </Card>
 
       <SectionTitle title="Waitlist policy" />
