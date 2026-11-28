@@ -37,13 +37,12 @@ import {
   StatusDot,
   TYPE_LABEL,
   TypeIcon,
-  colors,
   isHovered,
   radius,
-  s,
   space,
   type IconName,
 } from "../../ui";
+import { useTheme } from "../../theme";
 
 type Sel = { from: number; to: number } | null;
 
@@ -57,6 +56,7 @@ function Rules({
   maxActive: number;
   notice: number;
 }) {
+  const { colors, s } = useTheme();
   const rows: [IconName, string][] = [
     ["calendar-outline", `You can book up to ${horizon} days ahead.`],
     [
@@ -91,6 +91,7 @@ function Rules({
 }
 
 function Legend() {
+  const { colors, s } = useTheme();
   const item = (bg: string, border: string, label: string) => (
     <View style={[s.hstack, { gap: 6 }]}>
       <View
@@ -109,14 +110,15 @@ function Legend() {
   return (
     <View style={[s.wrap, { gap: space.md }]}>
       {item(colors.card, colors.line, "Free")}
-      {item(colors.warnSoft, "#FCD34D", "Full · waitlist")}
+      {item(colors.warnSoft, colors.warnBorder, "Full · waitlist")}
       {item(colors.primary, colors.primary, "Selected")}
-      {item("#F1F5F9", "#F1F5F9", "Past")}
+      {item(colors.neutralSoft, colors.neutralSoft, "Past")}
     </View>
   );
 }
 
 export default function ResourceScreen() {
+  const { colors, s } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
@@ -304,7 +306,7 @@ export default function ResourceScreen() {
                         borderColor: on ? colors.primary : colors.line,
                         backgroundColor: on ? colors.primary : colors.card,
                       },
-                      hovered && !on && { borderColor: "#C7D2FE" },
+                      hovered && !on && { borderColor: colors.primaryBorder },
                     ];
                   }}
                 >
@@ -312,7 +314,7 @@ export default function ResourceScreen() {
                     style={{
                       fontSize: 12,
                       fontWeight: "600",
-                      color: on ? "#C7D2FE" : colors.muted,
+                      color: on ? colors.onPrimaryMuted : colors.muted,
                     }}
                   >
                     {i === 0 ? "Today" : p.wk}
@@ -321,7 +323,7 @@ export default function ResourceScreen() {
                     style={{
                       fontSize: 20,
                       fontWeight: "800",
-                      color: on ? "#fff" : colors.text,
+                      color: on ? colors.onPrimary : colors.text,
                     }}
                   >
                     {p.day}
@@ -329,7 +331,7 @@ export default function ResourceScreen() {
                   <Text
                     style={{
                       fontSize: 11,
-                      color: on ? "#C7D2FE" : colors.faint,
+                      color: on ? colors.onPrimaryMuted : colors.faint,
                     }}
                   >
                     {p.mon}
@@ -395,7 +397,7 @@ export default function ResourceScreen() {
             </Text>
             <ProgressBar
               value={freeCount / futureCount}
-              color={freeCount / futureCount < 0.25 ? colors.warn : "#10B981"}
+              color={freeCount / futureCount < 0.25 ? colors.warn : colors.live}
             />
           </View>
         )}
@@ -439,16 +441,16 @@ export default function ResourceScreen() {
             const bg = on
               ? colors.primary
               : past
-                ? "#F1F5F9"
+                ? colors.neutralSoft
                 : full
                   ? colors.warnSoft
                   : colors.card;
             const border = on
               ? colors.primary
               : past
-                ? "#F1F5F9"
+                ? colors.neutralSoft
                 : full
-                  ? "#FCD34D"
+                  ? colors.warnBorder
                   : colors.line;
             const sub = past
               ? "Past"
@@ -486,7 +488,11 @@ export default function ResourceScreen() {
                   style={{
                     fontSize: 16,
                     fontWeight: "700",
-                    color: on ? "#fff" : past ? colors.faint : colors.text,
+                    color: on
+                      ? colors.onPrimary
+                      : past
+                        ? colors.faint
+                        : colors.text,
                   }}
                 >
                   {fmtTime(sl.start_time, tz)}
@@ -496,7 +502,7 @@ export default function ResourceScreen() {
                     fontSize: 12,
                     fontWeight: "600",
                     color: on
-                      ? "#C7D2FE"
+                      ? colors.onPrimaryMuted
                       : past
                         ? colors.faint
                         : full
@@ -527,7 +533,7 @@ export default function ResourceScreen() {
           paddingBottom: Math.max(insets.bottom, space.md),
           paddingTop: space.md,
           paddingHorizontal: space.lg,
-          boxShadow: "0px -4px 16px rgba(15, 23, 42, 0.06)",
+          boxShadow: colors.shadowBar,
         }}
       >
         <View
