@@ -3,24 +3,31 @@ import { useRouter } from "expo-router";
 import * as Location from "expo-location";
 import { useMemo, useState } from "react";
 import { FlatList, Platform, ScrollView, Text, View } from "react-native";
-import { listNearby, listResources } from "../../api/endpoints";
-import type { Resource } from "../../api/generated";
+import { useResourceMap } from "../../api/hooks";
+import { listMyBookings, listNearby, listResources } from "../../api/endpoints";
+import type { Booking, Resource } from "../../api/generated";
 import { useAuth } from "../../auth/AuthContext";
 import { explain } from "../../lib/errors";
-import { hhmm } from "../../lib/time";
+import { dayLabel, fmtTime, hhmm, openState, until } from "../../lib/time";
+import { useNow } from "../../lib/useNow";
 import {
+  Appear,
+  Badge,
   Card,
   Chip,
   EmptyState,
   ErrorBox,
   Field,
   Icon,
-  Loading,
+  SkeletonCard,
+  StatusDot,
   TYPE_LABEL,
   Tag,
   TypeIcon,
   colors,
+  radius,
   s,
+  shadow,
   space,
   type IconName,
 } from "../../ui";
@@ -66,7 +73,16 @@ function greeting() {
   return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 }
 
-function ResourceCard({ r, onPress }: { r: Resource; onPress: () => void }) {
+function ResourceCard({
+  r,
+  now,
+  onPress,
+}: {
+  r: Resource;
+  now: Date;
+  onPress: () => void;
+}) {
+  const st = openState(r.open_time, r.close_time, r.timezone, now);
   return (
     <Card onPress={onPress}>
       <View style={[s.hstack, { gap: space.md, alignItems: "flex-start" }]}>
@@ -81,6 +97,7 @@ function ResourceCard({ r, onPress }: { r: Resource; onPress: () => void }) {
               ? ` · ${r.capacity} ${r.type === "ROOM" ? "seats" : "units"}`
               : ""}
           </Text>
+          <StatusDot on={st.open} label={st.label} />
           <View style={[s.wrap, { gap: 6, marginTop: 2 }]}>
             <Tag
               icon="time-outline"
@@ -108,9 +125,144 @@ function ResourceCard({ r, onPress }: { r: Resource; onPress: () => void }) {
   );
 }
 
+const isActive = (b: Booking, now: Date) =>
+  (b.status === "CONFIRMED" || b.status === "WAITLISTED") &&
+  new Date(b.end_time).getTime() > now.getTime();
+
+/** Greeting banner with a one-line summary of what the user has coming up. */
+function Hero({
+  name,
+  upcoming,
+  waiting,
+}: {
+  name?: string;
+  upcoming: number;
+  waiting: number;
+}) {
+  const summary =
+    upcoming + waiting === 0
+      ? "No bookings coming up. Find a place below."
+      : [
+          upcoming ? `${upcoming} confirmed` : "",
+          waiting ? `${waiting} on a waitlist` : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+  return (
+    <View
+      style={{
+        backgroundColor: colors.primary,
+        borderRadius: radius.lg,
+        padding: space.xl,
+        gap: 6,
+        overflow: "hidden",
+        ...shadow,
+      }}
+    >
+      <View
+        style={{
+          position: "absolute",
+          right: -40,
+          top: -50,
+          width: 180,
+          height: 180,
+          borderRadius: 90,
+          backgroundColor: "rgba(255,255,255,0.08)",
+        }}
+      />
+      <View
+        style={{
+          position: "absolute",
+          right: 40,
+          bottom: -70,
+          width: 120,
+          height: 120,
+          borderRadius: 60,
+          backgroundColor: "rgba(255,255,255,0.06)",
+        }}
+      />
+      <Text style={{ color: "#C7D2FE", fontSize: 13, fontWeight: "700" }}>
+        {greeting().toUpperCase()}
+      </Text>
+      <Text
+        style={{
+          color: "#fff",
+          fontSize: 24,
+          fontWeight: "800",
+          letterSpacing: -0.3,
+        }}
+      >
+        {name ? `Hi, ${name}` : "Welcome"}
+      </Text>
+      <Text style={{ color: "#E0E7FF", fontSize: 14 }}>{summary}</Text>
+    </View>
+  );
+}
+
+/** The user's soonest active booking, with a live countdown. */
+function UpNext({
+  b,
+  r,
+  now,
+  onPress,
+}: {
+  b: Booking;
+  r?: Resource;
+  now: Date;
+  onPress: () => void;
+}) {
+  const tz = r?.timezone ?? "UTC";
+  const startMs = new Date(b.start_time).getTime();
+  const started = startMs <= now.getTime();
+  const soon = startMs - now.getTime() < 3600_000;
+  return (
+    <Card onPress={onPress} style={{ gap: space.sm }}>
+      <View style={s.row}>
+        <Text style={s.section}>Up next</Text>
+        <Text
+          style={{
+            fontSize: 13,
+            fontWeight: "700",
+            color: started || soon ? colors.ok : colors.primary,
+          }}
+        >
+          {started
+            ? "Happening now"
+            : `Starts ${until(b.start_time, now.getTime())}`}
+        </Text>
+      </View>
+      <View style={[s.hstack, { gap: space.md }]}>
+        {r && <TypeIcon type={r.type} size={40} />}
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={s.title} numberOfLines={1}>
+            {r?.name ?? "Your booking"}
+          </Text>
+          <Text style={s.muted}>
+            {dayLabel(b.start_time, tz, now)} · {fmtTime(b.start_time, tz)}–
+            {fmtTime(b.end_time, tz)}
+          </Text>
+        </View>
+        <Badge status={b.status} />
+      </View>
+    </Card>
+  );
+}
+
 export default function Explore() {
   const router = useRouter();
   const { user } = useAuth();
+  const now = useNow();
+  const rmap = useResourceMap();
+  // Bookings come newest start first, so the first page holds the upcoming ones in practice.
+  const mine = useQuery({
+    queryKey: ["bookings", "summary"],
+    queryFn: () => listMyBookings(),
+    staleTime: 15_000,
+  });
+  const active = (mine.data?.items ?? [])
+    .filter((b) => isActive(b, now))
+    .sort((a, b) => a.start_time.localeCompare(b.start_time));
+  const next = active[0];
   const [type, setType] = useState("ALL");
   const [q, setQ] = useState("");
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
@@ -158,15 +310,19 @@ export default function Explore() {
 
   const header = (
     <View style={{ gap: space.md, marginBottom: space.xs }}>
-      <View style={{ gap: 4 }}>
-        <Text style={s.h2}>
-          {greeting()}
-          {first ? `, ${first}` : ""}
-        </Text>
-        <Text style={s.muted}>
-          Find a seat, room or compute slot and book it in seconds.
-        </Text>
-      </View>
+      <Hero
+        name={first}
+        upcoming={active.filter((b) => b.status === "CONFIRMED").length}
+        waiting={active.filter((b) => b.status === "WAITLISTED").length}
+      />
+      {next && (
+        <UpNext
+          b={next}
+          r={rmap.get(next.resource_id)}
+          now={now}
+          onPress={() => router.push(`/booking/${next.booking_id}` as never)}
+        />
+      )}
       <Field
         icon="search"
         value={q}
@@ -217,13 +373,20 @@ export default function Explore() {
       data={items}
       keyExtractor={(r) => r.resource_id}
       refreshing={isRefetching}
-      onRefresh={refetch}
+      onRefresh={() => {
+        refetch();
+        mine.refetch();
+      }}
       contentContainerStyle={s.content}
       ListHeaderComponent={header}
       keyboardShouldPersistTaps="handled"
       ListEmptyComponent={
         isLoading || locating || (near && nearQ.isLoading) ? (
-          <Loading label={locating ? "Finding you…" : "Loading places…"} />
+          <View style={{ gap: space.md }}>
+            {[0, 1, 2].map((i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </View>
         ) : isError || (near && nearQ.isError) ? undefined : near &&
           !all.length ? (
           <EmptyState
@@ -243,11 +406,16 @@ export default function Explore() {
           />
         )
       }
-      renderItem={({ item }) => (
-        <ResourceCard
-          r={item}
-          onPress={() => router.push(`/resource/${item.resource_id}` as never)}
-        />
+      renderItem={({ item, index }) => (
+        <Appear index={index}>
+          <ResourceCard
+            r={item}
+            now={now}
+            onPress={() =>
+              router.push(`/resource/${item.resource_id}` as never)
+            }
+          />
+        </Appear>
       )}
     />
   );
