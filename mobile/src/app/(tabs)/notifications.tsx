@@ -4,16 +4,8 @@ import type { Notification } from "../../api/generated";
 import { ago } from "../../lib/time";
 import { notifyMeta } from "../../notifications/meta";
 import { useNotifications } from "../../notifications/NotificationsContext";
-import {
-  Appear,
-  Button,
-  Card,
-  EmptyState,
-  Icon,
-  colors,
-  s,
-  space,
-} from "../../ui";
+import { Appear, Button, Card, EmptyState, Icon, space } from "../../ui";
+import { useTheme } from "../../theme";
 
 type Row =
   | { kind: "header"; key: string; label: string }
@@ -37,6 +29,7 @@ function grouped(items: Notification[]): Row[] {
 }
 
 export default function Inbox() {
+  const { colors, s } = useTheme();
   const router = useRouter();
   const { items, unread, markRead } = useNotifications();
 
@@ -81,7 +74,7 @@ export default function Inbox() {
             </Text>
           );
         const item = row.n;
-        const m = notifyMeta(item.type);
+        const m = notifyMeta(item.type, colors);
         const bid =
           typeof item.payload.booking_id === "string"
             ? item.payload.booking_id
@@ -92,7 +85,10 @@ export default function Inbox() {
             <Card
               style={
                 isNew
-                  ? { borderColor: "#C7D2FE", backgroundColor: "#FAFBFF" }
+                  ? {
+                      borderColor: colors.primaryBorder,
+                      backgroundColor: colors.unreadBg,
+                    }
                   : undefined
               }
               onPress={() => {
