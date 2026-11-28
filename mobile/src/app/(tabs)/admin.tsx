@@ -22,13 +22,12 @@ import {
   TYPE_LABEL,
   Tag,
   TypeIcon,
-  colors,
   groupLabel,
   radius,
-  s,
   space,
   type IconName,
 } from "../../ui";
+import { useTheme } from "../../theme";
 
 const pct = (x?: number | null) => `${((x ?? 0) * 100).toFixed(1)}%`;
 const n2 = (x?: number | null) => (x ?? 0).toFixed(2);
@@ -65,6 +64,7 @@ function Kpi({
   hint?: string;
   tone?: "good" | "warn" | "bad";
 }) {
+  const { colors, s } = useTheme();
   const fg =
     tone === "good"
       ? colors.ok
@@ -80,7 +80,7 @@ function Kpi({
         flexBasis: 150,
         padding: space.md,
         borderRadius: radius.md,
-        backgroundColor: "#F8FAFC",
+        backgroundColor: colors.cardAlt,
         gap: 4,
       }}
     >
@@ -116,6 +116,7 @@ function Panel({
   subtitle?: string;
   children: React.ReactNode;
 }) {
+  const { colors, s } = useTheme();
   return (
     <Card style={{ gap: space.md }}>
       <View style={[s.hstack, { gap: space.md, alignItems: "flex-start" }]}>
@@ -150,13 +151,15 @@ function BarRow({
   label,
   value,
   frac,
-  color = colors.primary,
+  color,
 }: {
   label: string;
   value: string;
   frac: number;
   color?: string;
 }) {
+  const { colors, s } = useTheme();
+  color = color ?? colors.primary;
   return (
     <View style={{ gap: 6 }}>
       <View style={s.row}>
@@ -171,7 +174,7 @@ function BarRow({
         style={{
           height: 8,
           borderRadius: 4,
-          backgroundColor: "#EEF1F6",
+          backgroundColor: colors.track,
           overflow: "hidden",
         }}
       >
@@ -191,12 +194,14 @@ function BarRow({
 function Histogram({
   values,
   labels,
-  color = colors.primary,
+  color,
 }: {
   values: number[];
   labels: string[];
   color?: string;
 }) {
+  const { colors } = useTheme();
+  color = color ?? colors.primary;
   const max = Math.max(1, ...values);
   return (
     <View
@@ -226,6 +231,7 @@ function Histogram({
 }
 
 function Insights() {
+  const { colors, s } = useTheme();
   const [days, setDays] = useState(14);
   const opts = { refetchInterval: 30_000 };
   const sum = useQuery({
@@ -484,6 +490,7 @@ function Insights() {
 }
 
 function ManageResources() {
+  const { colors, s } = useTheme();
   const router = useRouter();
   const q = useQuery({
     queryKey: ["admin-resources"],
@@ -577,6 +584,7 @@ function ManageResources() {
 type Mode = "insights" | "resources";
 
 export default function Admin() {
+  const { s } = useTheme();
   const [mode, setMode] = useState<Mode>("insights");
   return (
     <View style={s.screen}>
