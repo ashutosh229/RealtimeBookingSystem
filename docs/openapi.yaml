@@ -886,6 +886,9 @@ components:
           timezone,
           max_slots_per_booking,
           max_quantity_per_booking,
+          max_active_per_user,
+          min_cancel_notice_minutes,
+          booking_horizon_days,
           policy_name,
           active,
         ]
@@ -900,6 +903,12 @@ components:
         timezone: { type: string, example: UTC }
         max_slots_per_booking: { type: integer }
         max_quantity_per_booking: { type: integer }
+        max_active_per_user:
+          { type: integer, description: Most active bookings one user may hold here }
+        min_cancel_notice_minutes:
+          { type: integer, description: "Cancellation closes this many minutes before start (0 = any time before start)" }
+        booking_horizon_days:
+          { type: integer, description: How many days ahead bookings open }
         policy_name: { $ref: "#/components/schemas/Policy" }
         lat: { type: number, nullable: true }
         lon: { type: number, nullable: true }
@@ -930,6 +939,10 @@ components:
         timezone: { type: string }
         max_slots_per_booking: { type: integer, minimum: 1, default: 4 }
         max_quantity_per_booking: { type: integer, minimum: 1, default: 1 }
+        max_active_per_user: { type: integer, minimum: 1, maximum: 50, default: 2 }
+        min_cancel_notice_minutes:
+          { type: integer, minimum: 0, maximum: 10080, default: 0 }
+        booking_horizon_days: { type: integer, minimum: 1, maximum: 90, default: 14 }
         policy_name: { $ref: "#/components/schemas/Policy" }
         lat: { type: number }
         lon: { type: number }
@@ -943,6 +956,9 @@ components:
         close_time: { type: string }
         max_slots_per_booking: { type: integer, minimum: 1 }
         max_quantity_per_booking: { type: integer, minimum: 1 }
+        max_active_per_user: { type: integer, minimum: 1, maximum: 50 }
+        min_cancel_notice_minutes: { type: integer, minimum: 0, maximum: 10080 }
+        booking_horizon_days: { type: integer, minimum: 1, maximum: 90 }
         policy_name: { $ref: "#/components/schemas/Policy" }
         lat: { type: number }
         lon: { type: number }
