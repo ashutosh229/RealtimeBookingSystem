@@ -18,12 +18,10 @@ import {
   Icon,
   Segmented,
   SkeletonCard,
-  TYPE_META,
-  colors,
   radius,
-  s,
   space,
 } from "../../ui";
+import { useTheme } from "../../theme";
 
 type View_ = "upcoming" | "past";
 type Row =
@@ -70,9 +68,10 @@ function BookingRow({
   now: Date;
   onPress: () => void;
 }) {
+  const { colors, s, typeMeta } = useTheme();
   const tz = r?.timezone ?? "UTC";
   const d = dateParts(b.start_time, tz);
-  const meta = TYPE_META[r?.type ?? "SEAT"];
+  const meta = typeMeta[r?.type ?? "SEAT"];
   const active = isUpcoming(b, now.getTime());
   const startMs = new Date(b.start_time).getTime();
   const soon = active && startMs - now.getTime() < 24 * 3600_000;
@@ -86,7 +85,7 @@ function BookingRow({
             paddingVertical: 8,
             borderRadius: radius.md,
             alignItems: "center",
-            backgroundColor: active ? meta.bg : "#F1F5F9",
+            backgroundColor: active ? meta.bg : colors.neutralSoft,
           }}
         >
           <Text
@@ -148,6 +147,7 @@ function BookingRow({
 }
 
 export default function Bookings() {
+  const { s } = useTheme();
   const router = useRouter();
   const rmap = useResourceMap();
   const now = useNow();
