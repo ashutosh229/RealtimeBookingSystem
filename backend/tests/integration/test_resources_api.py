@@ -256,3 +256,28 @@ async def test_deactivate_rules(client):
     assert (
         await client.get(f"/v1/resources/{idle['resource_id']}", headers=admin)
     ).status_code == 200
+
+
+async def test_booking_rules_are_visible_and_editable(client):
+    admin, _ = await make_user(client, "admin", "staff")
+    student, _ = await make_user(client)
+    r = await create(
+        client, admin, max_active_per_user=3, min_cancel_notice_minutes=60, booking_horizon_days=7
+    )
+    seen = (await client.get(f"/v1/resources/{r['resource_id']}", headers=student)).json()
+    assert (seen["max_active_per_user"], seen["min_cancel_notice_minutes"]) == (3, 60)
+    assert seen["booking_horizon_days"] == 7
+    up = await client.patch(
+        f"/v1/admin/resources/{r['resource_id']}",
+        json={"min_cancel_notice_minutes": 0, "booking_horizon_days": 30},
+        headers=admin,
+    )
+    assert up.status_code == 200
+    assert (up.json()["min_cancel_notice_minutes"], up.json()["booking_horizon_days"]) == (0, 30)
+    bad = await client.patch(
+        f"/v1/admin/resources/{r['resource_id']}", json={"booking_horizon_days": 0}, headers=admin
+    )
+    assert bad.status_code == 422
+
+    defaults = await create(client, admin)
+    assert (defaults["max_active_per_user"], defaults["booking_horizon_days"]) == (2, 14)
