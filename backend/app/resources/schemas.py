@@ -20,6 +20,9 @@ class ResourceOut(BaseModel):
     timezone: str
     max_slots_per_booking: int
     max_quantity_per_booking: int
+    max_active_per_user: int
+    min_cancel_notice_minutes: int
+    booking_horizon_days: int
     policy_name: PolicyName
     lat: float | None = None
     lon: float | None = None
@@ -47,6 +50,9 @@ class ResourceCreate(BaseModel):
     timezone: str
     max_slots_per_booking: int = Field(default=4, ge=1)
     max_quantity_per_booking: int = Field(default=1, ge=1)
+    max_active_per_user: int = Field(default=2, ge=1, le=50)
+    min_cancel_notice_minutes: int = Field(default=0, ge=0, le=10080)
+    booking_horizon_days: int = Field(default=14, ge=1, le=90)
     policy_name: PolicyName = "FIFO"
     lat: float | None = Field(default=None, ge=-90, le=90)
     lon: float | None = Field(default=None, ge=-180, le=180)
@@ -62,6 +68,9 @@ class ResourceUpdate(BaseModel):
     close_time: time | None = None
     max_slots_per_booking: int | None = Field(default=None, ge=1)
     max_quantity_per_booking: int | None = Field(default=None, ge=1)
+    max_active_per_user: int | None = Field(default=None, ge=1, le=50)
+    min_cancel_notice_minutes: int | None = Field(default=None, ge=0, le=10080)
+    booking_horizon_days: int | None = Field(default=None, ge=1, le=90)
     policy_name: PolicyName | None = None
     lat: float | None = Field(default=None, ge=-90, le=90)
     lon: float | None = Field(default=None, ge=-180, le=180)
