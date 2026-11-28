@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { myChance } from "../../api/endpoints";
 import { useAuth } from "../../auth/AuthContext";
 import { API_BASE } from "../../config";
@@ -12,12 +12,71 @@ import {
   InfoRow,
   SectionTitle,
   Tag,
-  colors,
   groupLabel,
-  s,
+  radius,
   space,
   type IconName,
 } from "../../ui";
+import { useTheme, type Mode } from "../../theme";
+
+const MODES: [Mode, string, IconName][] = [
+  ["system", "System", "phone-portrait-outline"],
+  ["light", "Light", "sunny-outline"],
+  ["dark", "Dark", "moon-outline"],
+];
+
+/** Theme choice, remembered on this device. "System" follows the phone or browser setting. */
+function AppearancePicker() {
+  const { colors, s, mode, setMode, isDark } = useTheme();
+  return (
+    <Card style={{ gap: space.md }}>
+      <View style={[s.hstack, { gap: space.sm }]}>
+        {MODES.map(([m, label, icon]) => {
+          const on = mode === m;
+          return (
+            <Pressable
+              key={m}
+              onPress={() => setMode(m)}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: on }}
+              accessibilityLabel={`${label} theme`}
+              style={{
+                flex: 1,
+                alignItems: "center",
+                gap: 6,
+                paddingVertical: space.md,
+                borderRadius: radius.md,
+                borderWidth: 1.5,
+                borderColor: on ? colors.primary : colors.line,
+                backgroundColor: on ? colors.primarySoft : colors.cardAlt,
+              }}
+            >
+              <Icon
+                name={icon}
+                size={22}
+                color={on ? colors.primaryText : colors.muted}
+              />
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: on ? colors.primaryText : colors.body,
+                }}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Text style={[s.muted, { fontSize: 13 }]}>
+        {mode === "system"
+          ? `Following your device (currently ${isDark ? "dark" : "light"}).`
+          : `Always ${mode}, whatever your device uses.`}
+      </Text>
+    </Card>
+  );
+}
 
 const cap = (x?: string) => (x ? x[0].toUpperCase() + x.slice(1) : "—");
 const pct = (x?: number | null) =>
@@ -26,6 +85,7 @@ const WINDOW_DAYS = 30;
 
 /** Sub-theme 6 from the student's side: how often their attempts end with a place, against everyone's. */
 function MyChanceCard() {
+  const { colors, s } = useTheme();
   const q = useQuery({
     queryKey: ["my-chance", WINDOW_DAYS],
     queryFn: () => myChance(WINDOW_DAYS),
@@ -85,6 +145,7 @@ function MyChanceCard() {
 }
 
 export default function Account() {
+  const { colors, s } = useTheme();
   const { user, logout } = useAuth();
   const [busy, setBusy] = useState(false);
   return (
@@ -114,6 +175,9 @@ export default function Account() {
       </Card>
 
       <MyChanceCard />
+
+      <SectionTitle title="Appearance" />
+      <AppearancePicker />
 
       <SectionTitle title="Account details" />
       <Card style={{ paddingVertical: space.xs }}>
