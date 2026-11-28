@@ -75,3 +75,62 @@ export function fmtDay(ymd: string): string {
     month: "short",
   });
 }
+
+/** "in 5 min", "in 2 h 10 min", "in 3 days" (future); "now" once it has started. */
+export function until(iso: string, now = Date.now()): string {
+  const min = Math.round((new Date(iso).getTime() - now) / 60000);
+  if (min <= 0) return "now";
+  if (min < 60) return `in ${min} min`;
+  if (min < 24 * 60) {
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    return m ? `in ${h} h ${m} min` : `in ${h} h`;
+  }
+  const d = Math.round(min / (24 * 60));
+  return d === 1 ? "tomorrow" : `in ${d} days`;
+}
+
+/** "Today", "Tomorrow", or "Sat 30 Nov" for an instant, in the resource's zone. */
+export function dayLabel(iso: string, tz: string, now = new Date()): string {
+  const day = ymdInZone(new Date(iso), tz);
+  const today = ymdInZone(now, tz);
+  if (day === today) return "Today";
+  if (day === addDays(today, 1)) return "Tomorrow";
+  if (day === addDays(today, -1)) return "Yesterday";
+  return fmtDay(day);
+}
+
+/** Wall-clock "HH:MM" right now in a zone. */
+export function nowHHMM(tz: string, now = new Date()): string {
+  return now.toLocaleTimeString("en-GB", {
+    timeZone: tz,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+}
+
+/** Whether a place is open now, and the next change ("Closes 22:00" / "Opens 08:00"). */
+export function openState(
+  open: string,
+  close: string,
+  tz: string,
+  now = new Date(),
+): { open: boolean; label: string } {
+  const t = nowHHMM(tz, now);
+  const o = hhmm(open);
+  const c = hhmm(close);
+  if (t >= o && t < c) return { open: true, label: `Open · closes ${c}` };
+  return {
+    open: false,
+    label: t < o ? `Closed · opens ${o}` : `Closed · opens ${o} tomorrow`,
+  };
+}
+
+/** "60 min", "2 h", "1 h 30 min". */
+export function fmtMinutes(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
